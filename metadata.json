@@ -1,0 +1,6 @@
+{
+  "name": "Vector Editor",
+  "description": "A high-performance vector graphics editor with real-time motion timeline, property keyframing, motion presets, and animated SVG export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

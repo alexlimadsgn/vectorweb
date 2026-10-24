@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --panel-width: 280px;
+  --toolbar-width: 48px;
+  --color-primary-container: #818cf8;
+  --color-primary-fixed-dim: #a5b4fc;
+  --color-surface-container-low: #18181b;
+  --color-surface-container-lowest: #121214;
+  --color-surface-container: #1f1f23;
+  --color-surface-container-high: #27272a;
+  --color-surface-container-highest: #323238;
+  --color-surface-bright: #3f3f46;
+  --color-surface-dim: #121214;
+  --color-surface-variant: #27272a;
+  --color-surface: #121214;
+  --color-on-surface: #f4f4f5;
+  --color-on-surface-variant: #a1a1aa;
+  --color-outline: #71717a;
+  --color-outline-variant: #3f3f46;
+  --color-primary: #818cf8;
+  --color-on-primary: #1e1b4b;
+  --color-background: #121214;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  overflow: hidden;
+  user-select: none;
+  font-family: var(--font-sans);
+}
+
+/* Remove spinner arrows from number inputs */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Canvas background grid logic */
+.canvas-grid {
+  background-color: var(--color-surface);
+  background-image: radial-gradient(var(--color-surface-variant) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+.selection-handle {
+  width: 8px;
+  height: 8px;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary-container);
+  position: absolute;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #464554; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #6b697d; }
