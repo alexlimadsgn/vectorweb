@@ -5,6 +5,7 @@ import { useStore } from '../store/useStore';
 interface Preset {
   name: string;
   label: string;
+  stroke?: boolean; // previewed as an animated line instead of a square
   // CSS keyframes body used by the live thumbnail preview
   keyframes: string;
   easing: string;
@@ -34,6 +35,15 @@ const CATEGORIES: { title: string; presets: Preset[] }[] = [
     ],
   },
   {
+    title: 'Traço',
+    presets: [
+      { name: 'Draw', label: 'Desenhar', stroke: true, easing: 'ease-in-out', keyframes: 'from{stroke-dashoffset:100}to{stroke-dashoffset:0}' },
+      { name: 'Erase', label: 'Apagar', stroke: true, easing: 'ease-in-out', keyframes: 'from{stroke-dashoffset:0}to{stroke-dashoffset:-100}' },
+      { name: 'Draw Erase', label: 'Desenhar e apagar', stroke: true, easing: 'ease-in-out', keyframes: '0%{stroke-dashoffset:100}50%{stroke-dashoffset:0}100%{stroke-dashoffset:-100}' },
+      { name: 'Travel', label: 'Viajante', stroke: true, easing: 'linear', keyframes: 'from{stroke-dashoffset:0}to{stroke-dashoffset:-125}' },
+    ],
+  },
+  {
     title: 'Saída',
     presets: [
       { name: 'Fade Out', label: 'Sumir', easing: 'ease-in-out', keyframes: 'from{opacity:1}to{opacity:0}' },
@@ -49,13 +59,13 @@ const previewCss = CATEGORIES.flatMap(c => c.presets)
   .map(p => `@keyframes vw-preset-${slug(p.name)}{${p.keyframes}}`)
   .join('\n');
 
-export default function PresetGallery({ shapeId }: { shapeId: string }) {
+export default function PresetGallery({ shapeId, hasStroke }: { shapeId: string; hasStroke: boolean }) {
   const applyPresetAnimation = useStore(s => s.applyPresetAnimation);
 
   return (
     <Box>
       <style>{previewCss}</style>
-      {CATEGORIES.map(category => (
+      {CATEGORIES.filter(c => hasStroke || c.title !== 'Traço').map(category => (
         <Box key={category.title} mb={3}>
           <Text fontSize="10px" fontWeight="semibold" color="#918F9F" mb={1.5}>
             {category.title}
@@ -81,16 +91,31 @@ export default function PresetGallery({ shapeId }: { shapeId: string }) {
                 role="group"
               >
                 <Flex w="full" h="40px" align="center" justify="center" bg="#121214" rounded="sm" overflow="hidden">
-                  <Box
-                    w="14px"
-                    h="14px"
-                    rounded="3px"
-                    bg="#818CF8"
-                    style={{
-                      animation: `vw-preset-${slug(preset.name)} 1.4s ${preset.easing} infinite`,
-                      animationDelay: '0.2s',
-                    }}
-                  />
+                  {preset.stroke ? (
+                    <svg width="40" height="24" viewBox="0 0 40 24">
+                      <path
+                        d="M3 18 C 10 2, 18 2, 20 12 S 32 22, 37 6"
+                        fill="none"
+                        stroke="#818CF8"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        pathLength={100}
+                        strokeDasharray={preset.name === 'Travel' ? '25 100' : '100 100'}
+                        style={{ animation: `vw-preset-${slug(preset.name)} 1.6s ${preset.easing} infinite` }}
+                      />
+                    </svg>
+                  ) : (
+                    <Box
+                      w="14px"
+                      h="14px"
+                      rounded="3px"
+                      bg="#818CF8"
+                      style={{
+                        animation: `vw-preset-${slug(preset.name)} 1.4s ${preset.easing} infinite`,
+                        animationDelay: '0.2s',
+                      }}
+                    />
+                  )}
                 </Flex>
                 <Text fontSize="10px" color="#C7C4D6" _groupHover={{ color: 'white' }} lineClamp={1}>
                   {preset.label}

@@ -2,7 +2,8 @@ export type ToolType = 'select' | 'frame' | 'rectangle' | 'ellipse' | 'pen' | 'b
 
 export type ShapeType = 'frame' | 'rectangle' | 'ellipse' | 'path' | 'group' | 'image';
 
-export type AnimatableProperty = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity' | 'fill' | 'radius';
+export type AnimatableProperty = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity' | 'fill' | 'radius'
+  | 'stroke' | 'strokeWidth' | 'trimStart' | 'trimEnd' | 'trimOffset';
 
 export interface PathPoint {
   x: number;
@@ -54,6 +55,21 @@ export interface BaseShape {
   anchorY?: number;
   editAnchorManual?: boolean;
   radius?: number;
+  // Stroke style
+  strokeCap?: 'butt' | 'round' | 'square';
+  strokeJoin?: 'miter' | 'round' | 'bevel';
+  strokeDash?: number; // dash length, 0 = solid
+  strokeGap?: number;
+  // Trim path, in % of the stroke length (0–100); offset shifts the visible window
+  trimStart?: number;
+  trimEnd?: number;
+  trimOffset?: number;
+  // Drop shadow
+  shadowColor?: string;
+  shadowOpacity?: number; // 0–100
+  shadowBlur?: number;
+  shadowX?: number;
+  shadowY?: number;
   rx?: number;
   d?: string;
   src?: string;

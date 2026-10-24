@@ -1,5 +1,6 @@
 import { BaseShape, AnimatableProperty, Keyframe } from '../types';
 import { getAnimatedShape } from './animationUtils';
+import { applyStrokeStyle, applyShadow } from './strokeUtils';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -90,8 +91,6 @@ export function renderFrame(
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.scale(scale, scale);
   ctx.translate(-region.x, -region.y);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
 
   shapes.forEach(raw => {
     if (raw.hidden || raw.type === 'group' || raw.type === 'frame') return;
@@ -114,8 +113,10 @@ export function renderFrame(
     ctx.strokeStyle = shape.stroke;
     ctx.lineWidth = shape.strokeWidth;
 
+    applyShadow(ctx, shape, scale);
+    const strokeVisible = applyStrokeStyle(ctx, shape);
     const hasFill = shape.fill && shape.fill !== 'transparent';
-    const hasStroke = shape.strokeWidth > 0 && shape.stroke && shape.stroke !== 'transparent';
+    const hasStroke = strokeVisible && shape.strokeWidth > 0 && shape.stroke && shape.stroke !== 'transparent';
     const imgUrl = shape.imageUrl || (shape.type === 'image' ? shape.src : undefined);
 
     if (shape.type === 'rectangle' || shape.type === 'image') {

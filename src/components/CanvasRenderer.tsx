@@ -6,6 +6,7 @@ import { BaseShape } from '../types';
 import { getAnimatedShape, getMotionPathNodes, MotionSegment } from '../lib/animationUtils';
 import { calculateMoveSnap, AlignmentGuide } from '../lib/snapUtils';
 import { simplifyPoints, smoothToBezier } from '../lib/pathUtils';
+import { applyStrokeStyle, applyShadow } from '../lib/strokeUtils';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import {
   Scissors, Copy, CopyPlus, Trash2,
@@ -791,6 +792,10 @@ export default function CanvasRenderer() {
         ctx.lineWidth = 1 / viewport.transform.scale;
       }
 
+      // Stroke style (cap/join/dash/trim) and drop shadow; wireframe shows raw geometry
+      const strokeVisible = showWireframe || isCurrentlyDrawing || shape.type === 'frame' ? true : applyStrokeStyle(ctx, shape);
+      if (!showWireframe && shape.type !== 'frame') applyShadow(ctx, shape, viewport.transform.scale * dpr);
+
       if (shape.type === 'frame') {
         const r = Math.max(0, shape.radius || 0);
         const cacheKey = `frame_${shape.width}_${shape.height}_${r}_${ax_offset}_${ay_offset}`;
@@ -877,7 +882,7 @@ export default function CanvasRenderer() {
         } else {
           if (shape.fill !== 'transparent' || showWireframe) ctx.fill(path);
         }
-        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent') || showWireframe) ctx.stroke(path);
+        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent' && strokeVisible) || showWireframe) ctx.stroke(path);
       } else if (shape.type === 'ellipse') {
         const rx = Math.abs(shape.width / 2);
         const ry = Math.abs(shape.height / 2);
@@ -887,7 +892,7 @@ export default function CanvasRenderer() {
         });
 
         if (shape.fill !== 'transparent' || showWireframe) ctx.fill(path);
-        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent') || showWireframe) ctx.stroke(path);
+        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent' && strokeVisible) || showWireframe) ctx.stroke(path);
       } else if (shape.type === 'path' && shape.points && shape.points.length > 0) {
         // Points are normalized around the shape center; offset to the anchor-based origin
         const offX = isCurrentlyDrawing ? 0 : hw - ax_offset;
@@ -922,7 +927,7 @@ export default function CanvasRenderer() {
             );
 
         if ((shape.fill !== 'transparent' && !isCurrentlyDrawing) || showWireframe) ctx.fill(path);
-        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent') || showWireframe) ctx.stroke(path);
+        if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent' && strokeVisible) || showWireframe) ctx.stroke(path);
       }
       ctx.restore();
 

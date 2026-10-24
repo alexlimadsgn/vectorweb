@@ -306,7 +306,7 @@ export function getAnimatedShape(
 
   let hasAnyKeyframe = false;
   const animatedProps: Partial<BaseShape> = {};
-  const props: AnimatableProperty[] = ['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius'];
+  const props: AnimatableProperty[] = ['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'];
 
   for (let i = 0; i < props.length; i++) {
     const p = props[i];
@@ -510,6 +510,32 @@ export function generatePresetKeyframes(
         makeKf(duration / 2, shape.y - 24, 'sine.inOut'),
         makeKf(duration, shape.y, 'sine.inOut'),
       ];
+      break;
+
+    // ---- Traço (trim path) ----
+    case 'draw':
+      result.trimStart = [makeKf(0, 0, 'linear')];
+      result.trimEnd = [makeKf(0, 0, 'power2.inOut'), makeKf(Math.min(1.5, duration), 100, 'power2.inOut')];
+      break;
+
+    case 'erase': {
+      const start = Math.max(0, duration - Math.min(1.5, duration));
+      result.trimEnd = [makeKf(0, 100, 'linear')];
+      result.trimStart = [makeKf(start, 0, 'power2.inOut'), makeKf(duration, 100, 'power2.inOut')];
+      break;
+    }
+
+    case 'draw erase': {
+      const half = duration / 2;
+      result.trimEnd = [makeKf(0, 0, 'power2.inOut'), makeKf(half, 100, 'power2.inOut')];
+      result.trimStart = [makeKf(half * 0.6, 0, 'power2.inOut'), makeKf(duration, 100, 'power2.inOut')];
+      break;
+    }
+
+    case 'travel':
+      result.trimStart = [makeKf(0, 0, 'linear')];
+      result.trimEnd = [makeKf(0, 25, 'linear')];
+      result.trimOffset = [makeKf(0, 0, 'linear'), makeKf(duration, 100, 'linear')];
       break;
 
     // ---- Saída ----

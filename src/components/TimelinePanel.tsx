@@ -18,7 +18,12 @@ const PROPERTY_LABELS: Record<AnimatableProperty, string> = {
   rotation: 'Rotação',
   opacity: 'Opacidade',
   fill: 'Cor de Preenchimento',
-  radius: 'Canto Arredondado'
+  radius: 'Canto Arredondado',
+  stroke: 'Cor do Contorno',
+  strokeWidth: 'Espessura',
+  trimStart: 'Trim Início',
+  trimEnd: 'Trim Fim',
+  trimOffset: 'Trim Deslocamento'
 };
 
 const TRACK_PADDING = 16;
@@ -701,8 +706,9 @@ export default function TimelinePanel() {
                   {/* Sub-Property Tracks */}
                   {isExpanded && (
                     <Box bg="#121214" pl={6} borderTop="1px solid" borderColor="#3F3F464D">
-                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius'] as AnimatableProperty[]).map((prop) => {
+                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
                         if (prop === 'radius' && shape.type !== 'rectangle') return null;
+                        if (['stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'].includes(prop) && !animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];
                         const hasPropKfs = propKfs.length > 0;
 
@@ -929,8 +935,9 @@ export default function TimelinePanel() {
                   {/* Sub-Property Sub-Tracks & Keyframes */}
                   {isExpanded && (
                     <Box bg="#100F14">
-                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius'] as AnimatableProperty[]).map((prop) => {
+                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
                         if (prop === 'radius' && shape.type !== 'rectangle') return null;
+                        if (['stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'].includes(prop) && !animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];
                         const sortedKfs = [...propKfs].sort((a, b) => a.time - b.time);
 
