@@ -5,6 +5,8 @@ import { MousePointer2, Square, Circle, Pen, Hand, Download, ChevronDown, Undo2,
 import { ToolType, BaseShape } from '../types';
 import { exportAnimatedSvg } from '../lib/exportAnimatedSvg';
 import ExportVideoDialog from './ExportVideoDialog';
+import AboutDialog from './AboutDialog';
+import { Info } from 'lucide-react';
 
 export default function TopBar() {
   const activeTool = useStore((s) => s.activeTool);
@@ -46,6 +48,7 @@ export default function TopBar() {
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [sourceCode, setSourceCode] = useState("");
@@ -765,6 +768,27 @@ export default function TopBar() {
             )}
           </Box>
 
+          {/* About / credits */}
+          <Box
+            as="button"
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            title="Sobre o VectorWeb"
+            aria-label="Sobre o VectorWeb"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            w="28px"
+            h="28px"
+            ml={1}
+            rounded="md"
+            color="#C7C4D6"
+            _hover={{ bg: '#27272A', color: 'white' }}
+            transition="all 0.15s"
+          >
+            <Info size={16} />
+          </Box>
+
           {/* GitHub repository link */}
           <Box
             as="a"
@@ -1000,6 +1024,7 @@ export default function TopBar() {
       </Flex>
 
       {videoDialogOpen && <ExportVideoDialog onClose={() => setVideoDialogOpen(false)} />}
+      {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
 
       {/* SVG Source code modal viewer */}
       {sourceModalOpen && (
