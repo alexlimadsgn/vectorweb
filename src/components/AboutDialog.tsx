@@ -92,7 +92,7 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
         </Text>
 
         <Text fontSize="sm" color="#E5E2E1">
-          Desenvolvido por <Text as="span" fontWeight="bold" color="white">Alex Lima</Text>
+          Idealizado por<Text as="span" fontWeight="bold" color="white">Alex Lima</Text>
         </Text>
         <Text fontSize="xs" color="#818CF8" mb={5}>@{HANDLE}</Text>
 
