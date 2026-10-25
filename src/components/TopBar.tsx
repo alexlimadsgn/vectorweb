@@ -951,7 +951,7 @@ export default function TopBar() {
                    align="center"
                    justify="space-between"
                  >
-                     <Text>Exportar tudo (SVG Estático)</Text>
+                     <Text>SVG estático (tudo)</Text>
                  </Box>
                  
                  <Box
@@ -971,7 +971,7 @@ export default function TopBar() {
                    align="center"
                    justify="space-between"
                  >
-                     <Text>Exportar seleção (SVG Estático)</Text>
+                     <Text>SVG estático (seleção)</Text>
                  </Box>
 
                  <Box h="1px" bg="#3F3F46" my={1.5} />
@@ -991,7 +991,7 @@ export default function TopBar() {
                    align="center"
                    justify="space-between"
                  >
-                   <Text color="inherit">Exportar vídeo (MP4)</Text>
+                   <Text color="inherit">Vídeo MP4</Text>
                  </Box>
 
                  <Box
@@ -1032,7 +1032,7 @@ export default function TopBar() {
                    align="center"
                    justify="space-between"
                  >
-                   <Text color="inherit">Exportar SVG Animado</Text>
+                   <Text color="inherit">SVG Animado</Text>
                    <Badge bg="#581C87" color="#E9D5FF" fontSize="9px" px={1.5} py={0.5} rounded="md" fontFamily="mono">
                      NOVO
                    </Badge>
