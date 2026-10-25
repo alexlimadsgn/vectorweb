@@ -8,8 +8,8 @@ interface ViewportState {
 }
 
 interface EditorState {
-  past: BaseShape[][];
-  future: BaseShape[][];
+  past: HistorySnapshot[];
+  future: HistorySnapshot[];
   shapes: BaseShape[];
   selectedIds: string[];
   hoveredId: string | null;
@@ -101,13 +101,37 @@ interface EditorState {
   applyPresetAnimation: (shapeId: string, presetName: string) => void;
   clearAnimationForShape: (shapeId: string) => void;
   keyframeAllSelected: () => void;
+  setKeyframeTimes: (updates: { shapeId: string; property: AnimatableProperty; keyframeId: string; time: number }[]) => void;
+  deleteKeyframes: (refs: { shapeId: string; property: AnimatableProperty; keyframeId: string }[]) => void;
   showMotionPath: boolean;
+  // True while the timeline has keyframes selected (Delete then removes keyframes, not shapes)
+  keyframeSelectionActive: boolean;
+  setKeyframeSelectionActive: (active: boolean) => void;
   toggleMotionPath: () => void;
   setMotionNode: (shapeId: string, time: number, x: number, y: number) => void;
   setMotionControl: (shapeId: string, fromTime: number, toTime: number, cp: { x: number; y: number } | null) => void;
 }
 
-export const useStore = create<EditorState>((set, get) => ({
+type AnimationMap = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
+export interface HistorySnapshot {
+  shapes: BaseShape[];
+  animations: AnimationMap;
+}
+
+// Time of the last history entry or animation edit; edits arriving in a continuous
+// stream (dragging keyframes, auto-keyframe while moving a shape) share one undo step.
+let lastHistoryActivity = 0;
+const HISTORY_COALESCE_MS = 400;
+
+export const useStore = create<EditorState>((set, get) => {
+  /** Records an undo step before an animation change, unless it continues a recent edit. */
+  const recordAnimationChange = () => {
+    const now = Date.now();
+    if (now - lastHistoryActivity > HISTORY_COALESCE_MS) get().pushHistory();
+    lastHistoryActivity = now;
+  };
+
+  return {
   past: [],
   future: [],
   shapes: [],
@@ -139,16 +163,20 @@ export const useStore = create<EditorState>((set, get) => ({
   timelineHeight: 260,
   animations: {},
   showMotionPath: true,
+  keyframeSelectionActive: false,
+  setKeyframeSelectionActive: (active) => set({ keyframeSelectionActive: active }),
   toggleMotionPath: () => set((state) => ({ showMotionPath: !state.showMotionPath })),
 
   // Moves a motion-path node: writes x/y keyframes at that time
   setMotionNode: (shapeId, time, x, y) => {
+    recordAnimationChange();
     get().addOrUpdateKeyframe(shapeId, 'x', time, x);
     get().addOrUpdateKeyframe(shapeId, 'y', time, y);
   },
 
   // Curves (or straightens, cp = null) the motion segment between two keyframe times
   setMotionControl: (shapeId, fromTime, toTime, cp) => {
+    recordAnimationChange();
     const shape = get().shapes.find(s => s.id === shapeId);
     if (!shape) return;
     if (cp) {
@@ -182,7 +210,9 @@ export const useStore = create<EditorState>((set, get) => ({
   toggleTimeline: () => set((state) => ({ showTimeline: !state.showTimeline })),
   setTimelineHeight: (height) => set({ timelineHeight: height }),
 
-  addOrUpdateKeyframe: (shapeId, property, targetTime, value) => set((state) => {
+  addOrUpdateKeyframe: (shapeId, property, targetTime, value) => {
+    recordAnimationChange();
+    set((state) => {
     const time = targetTime !== undefined ? targetTime : state.currentTime;
     const shape = state.shapes.find(s => s.id === shapeId);
     if (!shape) return state;
@@ -216,9 +246,12 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     };
-  }),
+  });
+  },
 
-  deleteKeyframe: (shapeId, property, keyframeId) => set((state) => {
+  deleteKeyframe: (shapeId, property, keyframeId) => {
+    recordAnimationChange();
+    set((state) => {
     const shapeAnims = state.animations[shapeId];
     if (!shapeAnims || !shapeAnims[property]) return state;
 
@@ -232,9 +265,12 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     };
-  }),
+  });
+  },
 
-  moveKeyframe: (shapeId, property, keyframeId, newTime) => set((state) => {
+  moveKeyframe: (shapeId, property, keyframeId, newTime) => {
+    recordAnimationChange();
+    set((state) => {
     const shapeAnims = state.animations[shapeId];
     if (!shapeAnims || !shapeAnims[property]) return state;
 
@@ -251,9 +287,12 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     };
-  }),
+  });
+  },
 
-  shiftShapeKeyframes: (shapeId, timeDelta) => set((state) => {
+  shiftShapeKeyframes: (shapeId, timeDelta) => {
+    recordAnimationChange();
+    set((state) => {
     const shapeAnims = state.animations[shapeId];
     if (!shapeAnims) return state;
 
@@ -288,9 +327,12 @@ export const useStore = create<EditorState>((set, get) => ({
         [shapeId]: newShapeAnims
       }
     };
-  }),
+  });
+  },
 
-  updateKeyframeEasing: (shapeId, property, keyframeId, easing, bezier, spring) => set((state) => {
+  updateKeyframeEasing: (shapeId, property, keyframeId, easing, bezier, spring) => {
+    recordAnimationChange();
+    set((state) => {
     const shapeAnims = state.animations[shapeId];
     if (!shapeAnims || !shapeAnims[property]) return state;
 
@@ -312,9 +354,12 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     };
-  }),
+  });
+  },
 
-  applyPresetAnimation: (shapeId, presetName) => set((state) => {
+  applyPresetAnimation: (shapeId, presetName) => {
+    recordAnimationChange();
+    set((state) => {
     const shape = state.shapes.find(s => s.id === shapeId);
     if (!shape) return state;
 
@@ -332,15 +377,58 @@ export const useStore = create<EditorState>((set, get) => ({
         }
       }
     };
-  }),
+  });
+  },
 
-  clearAnimationForShape: (shapeId) => set((state) => {
+  clearAnimationForShape: (shapeId) => {
+    recordAnimationChange();
+    set((state) => {
     const newAnims = { ...state.animations };
     delete newAnims[shapeId];
     return { animations: newAnims };
-  }),
+  });
+  },
+
+  // Moves several keyframes at once (multi-selection drag); times are clamped to the timeline
+  setKeyframeTimes: (updates) => {
+    if (updates.length === 0) return;
+    recordAnimationChange();
+    set((state) => {
+      const animations = { ...state.animations };
+      updates.forEach(({ shapeId, property, keyframeId, time }) => {
+        const anims = animations[shapeId];
+        const kfs = anims?.[property];
+        if (!kfs) return;
+        const clamped = Math.max(0, Math.min(state.duration, Math.round(time * 100) / 100));
+        animations[shapeId] = { ...anims, [property]: kfs.map(k => (k.id === keyframeId ? { ...k, time: clamped } : k)) };
+      });
+      Object.keys(animations).forEach(id => {
+        const anims = { ...animations[id] };
+        (Object.keys(anims) as AnimatableProperty[]).forEach(prop => {
+          anims[prop] = [...(anims[prop] || [])].sort((a, b) => a.time - b.time);
+        });
+        animations[id] = anims;
+      });
+      return { animations };
+    });
+  },
+
+  deleteKeyframes: (refs) => {
+    if (refs.length === 0) return;
+    recordAnimationChange();
+    set((state) => {
+      const animations = { ...state.animations };
+      refs.forEach(({ shapeId, property, keyframeId }) => {
+        const anims = animations[shapeId];
+        if (!anims?.[property]) return;
+        animations[shapeId] = { ...anims, [property]: anims[property]!.filter(k => k.id !== keyframeId) };
+      });
+      return { animations };
+    });
+  },
 
   keyframeAllSelected: () => {
+    recordAnimationChange();
     const state = get();
     state.selectedIds.forEach(id => {
       const shape = state.shapes.find(s => s.id === id);
@@ -529,7 +617,8 @@ export const useStore = create<EditorState>((set, get) => ({
   }),
 
   pushHistory: () => set((state) => {
-    const newPast = [...state.past, state.shapes];
+    lastHistoryActivity = Date.now();
+    const newPast = [...state.past, { shapes: state.shapes, animations: state.animations }];
     if (newPast.length > 50) newPast.shift(); // Max history 50
     return { past: newPast, future: [] };
   }),
@@ -717,8 +806,9 @@ export const useStore = create<EditorState>((set, get) => ({
     const newPast = state.past.slice(0, state.past.length - 1);
     return {
       past: newPast,
-      future: [state.shapes, ...state.future],
-      shapes: previous,
+      future: [{ shapes: state.shapes, animations: state.animations }, ...state.future],
+      shapes: previous.shapes,
+      animations: previous.animations,
       selectedIds: [], // Clear selection on undo
       hoveredId: null,
     };
@@ -729,9 +819,10 @@ export const useStore = create<EditorState>((set, get) => ({
     const next = state.future[0];
     const newFuture = state.future.slice(1);
     return {
-      past: [...state.past, state.shapes],
+      past: [...state.past, { shapes: state.shapes, animations: state.animations }],
       future: newFuture,
-      shapes: next,
+      shapes: next.shapes,
+      animations: next.animations,
       selectedIds: [], // Clear selection on redo
       hoveredId: null,
     };
@@ -1083,4 +1174,5 @@ export const useStore = create<EditorState>((set, get) => ({
       hoveredId: null
     };
   })
-}));
+};
+});

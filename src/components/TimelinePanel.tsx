@@ -27,6 +27,10 @@ const PROPERTY_LABELS: Record<AnimatableProperty, string> = {
 };
 
 const TRACK_PADDING = 16;
+const RULER_HEIGHT = 28;
+
+type KfRef = { shapeId: string; property: AnimatableProperty; keyframeId: string };
+const kfKey = (r: KfRef) => `${r.shapeId}|${r.property}|${r.keyframeId}`;
 
 const EASING_OPTIONS = [
   { value: 'power1.out', label: 'Suave (Power1 Out)' },
@@ -88,9 +92,29 @@ export default function TimelinePanel() {
   const autoKeyframeEnabled = useStore((s) => s.autoKeyframeEnabled);
   const toggleAutoKeyframe = useStore((s) => s.toggleAutoKeyframe);
   const updateKeyframeEasing = useStore((s) => s.updateKeyframeEasing);
+  const setKeyframeTimes = useStore((s) => s.setKeyframeTimes);
+  const deleteKeyframes = useStore((s) => s.deleteKeyframes);
 
   const [expandedShapes, setExpandedShapes] = useState<Record<string, boolean>>({});
-  const [selectedKeyframe, setSelectedKeyframe] = useState<{ shapeId: string; property: AnimatableProperty; keyframeId: string } | null>(null);
+  const [selectedKeyframe, setSelectedKeyframe] = useState<KfRef | null>(null);
+  // Multi-selection (marquee / Shift+click); `selectedKeyframe` is the primary one shown in the toolbar
+  const [selectedKfs, setSelectedKfs] = useState<KfRef[]>([]);
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number; active: boolean; additive: boolean; base: KfRef[] } | null>(null);
+  // Keyframes being dragged together, with their times at drag start
+  const groupDragRef = useRef<{ startTime: number; items: (KfRef & { time0: number })[] } | null>(null);
+
+  useEffect(() => {
+    useStore.getState().setKeyframeSelectionActive(selectedKfs.length > 0);
+  }, [selectedKfs.length]);
+
+  // Selecting other objects or hiding the timeline drops the keyframe selection
+  useEffect(() => {
+    setSelectedKfs([]);
+    setSelectedKeyframe(null);
+  }, [selectedIds.join(','), showTimeline]);
+
+  const isKfSelected = (shapeId: string, property: string, keyframeId: string) =>
+    selectedKfs.some(r => r.keyframeId === keyframeId && r.shapeId === shapeId && r.property === property);
 
   const [draggingPlayhead, setDraggingPlayhead] = useState(false);
   const [draggingKeyframe, setDraggingKeyframe] = useState<{ shapeId: string; property: AnimatableProperty; keyframeId: string } | null>(null);
@@ -119,6 +143,31 @@ export default function TimelinePanel() {
     const relativeX = x - TRACK_PADDING;
     const time = (relativeX / usableWidth) * duration;
     return Math.max(0, Math.min(duration, Math.round(time * 100) / 100));
+  };
+
+  const handleKeyframePointerDown = (e: React.PointerEvent, ref: KfRef) => {
+    e.stopPropagation();
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    let next = selectedKfs;
+    if (additive) {
+      next = isKfSelected(ref.shapeId, ref.property, ref.keyframeId)
+        ? selectedKfs.filter(r => kfKey(r) !== kfKey(ref))
+        : [...selectedKfs, ref];
+    } else if (!isKfSelected(ref.shapeId, ref.property, ref.keyframeId)) {
+      next = [ref];
+    }
+    setSelectedKfs(next);
+    setSelectedKeyframe(next.some(r => kfKey(r) === kfKey(ref)) ? ref : next[next.length - 1] || null);
+    if (additive || !trackCanvasRef.current) return;
+
+    // Drag the whole selection, keeping relative timing
+    const rect = trackCanvasRef.current.getBoundingClientRect();
+    const items = next.map(r => {
+      const kf = useStore.getState().animations[r.shapeId]?.[r.property]?.find(k => k.id === r.keyframeId);
+      return { ...r, time0: kf?.time ?? 0 };
+    });
+    groupDragRef.current = { startTime: getTimeFromX(e.clientX - rect.left, rect.width), items };
+    setDraggingKeyframe(ref);
   };
 
   const handleResizePointerDown = (e: React.PointerEvent) => {
@@ -156,10 +205,64 @@ export default function TimelinePanel() {
     if (!trackCanvasRef.current) return;
     const rect = trackCanvasRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const newTime = getTimeFromX(clickX, rect.width);
-    setCurrentTime(newTime);
-    setDraggingPlayhead(true);
+    if (e.clientY - rect.top <= RULER_HEIGHT) {
+      // Ruler: scrub the playhead
+      setCurrentTime(getTimeFromX(clickX, rect.width));
+      setDraggingPlayhead(true);
+      return;
+    }
+    // Track area: drag = marquee selection, click = move playhead (resolved on pointer up)
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    setMarquee({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, active: false, additive, base: additive ? selectedKfs : [] });
   };
+
+  useEffect(() => {
+    if (!marquee) return;
+    const onMove = (e: PointerEvent) => {
+      setMarquee(m => {
+        if (!m) return m;
+        const active = m.active || Math.hypot(e.clientX - m.x0, e.clientY - m.y0) > 4;
+        if (active) {
+          const left = Math.min(m.x0, e.clientX), right = Math.max(m.x0, e.clientX);
+          const top = Math.min(m.y0, e.clientY), bottom = Math.max(m.y0, e.clientY);
+          const hits = new Map<string, KfRef>();
+          m.base.forEach(r => hits.set(kfKey(r), r));
+          trackCanvasRef.current?.querySelectorAll<HTMLElement>('[data-kf]').forEach(el => {
+            const b = el.getBoundingClientRect();
+            const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
+            if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
+              const [shapeId, property, keyframeId] = el.dataset.kf!.split('|');
+              const ref = { shapeId, property: property as AnimatableProperty, keyframeId };
+              hits.set(kfKey(ref), ref);
+            }
+          });
+          const list = [...hits.values()];
+          setSelectedKfs(list);
+          setSelectedKeyframe(list[list.length - 1] || null);
+        }
+        return { ...m, x1: e.clientX, y1: e.clientY, active };
+      });
+    };
+    const onUp = (e: PointerEvent) => {
+      setMarquee(m => {
+        if (m && !m.active && trackCanvasRef.current) {
+          const rect = trackCanvasRef.current.getBoundingClientRect();
+          setCurrentTime(getTimeFromX(e.clientX - rect.left, rect.width));
+          if (!m.additive) {
+            setSelectedKfs([]);
+            setSelectedKeyframe(null);
+          }
+        }
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [!!marquee, duration]);
 
   const pendingTimelinePointerRef = useRef<PointerEvent | null>(null);
   const timelineRafRef = useRef<number | null>(null);
@@ -182,7 +285,16 @@ export default function TimelinePanel() {
             const rect = trackCanvasRef.current.getBoundingClientRect();
             const clickX = ev.clientX - rect.left;
             const newTime = getTimeFromX(clickX, rect.width);
-            moveKeyframe(draggingKeyframe.shapeId, draggingKeyframe.property, draggingKeyframe.keyframeId, newTime);
+            const drag = groupDragRef.current;
+            if (drag) {
+              // Clamp the shared offset so no keyframe leaves the timeline
+              const minT0 = Math.min(...drag.items.map(i => i.time0));
+              const maxT0 = Math.max(...drag.items.map(i => i.time0));
+              const delta = Math.max(-minT0, Math.min(duration - maxT0, newTime - drag.startTime));
+              setKeyframeTimes(drag.items.map(i => ({ ...i, time: i.time0 + delta })));
+            } else {
+              moveKeyframe(draggingKeyframe.shapeId, draggingKeyframe.property, draggingKeyframe.keyframeId, newTime);
+            }
           } else if (draggingBlock && trackCanvasRef.current) {
             const rect = trackCanvasRef.current.getBoundingClientRect();
             const usableWidth = rect.width - (TRACK_PADDING * 2);
@@ -202,6 +314,7 @@ export default function TimelinePanel() {
     const handlePointerUp = () => {
       setDraggingPlayhead(false);
       setDraggingKeyframe(null);
+      groupDragRef.current = null;
       setDraggingBlock(null);
     };
 
@@ -218,9 +331,14 @@ export default function TimelinePanel() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedKeyframe) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedKfs.length > 0) {
         if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-        deleteKeyframe(selectedKeyframe.shapeId, selectedKeyframe.property, selectedKeyframe.keyframeId);
+        deleteKeyframes(selectedKfs);
+        setSelectedKfs([]);
+        setSelectedKeyframe(null);
+      }
+      if (e.key === 'Escape' && selectedKfs.length > 0) {
+        setSelectedKfs([]);
         setSelectedKeyframe(null);
       }
       if (e.code === 'Space') {
@@ -233,7 +351,7 @@ export default function TimelinePanel() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedKeyframe, isPlaying]);
+  }, [selectedKfs, isPlaying]);
 
   if (!showTimeline) {
     return (
@@ -576,17 +694,13 @@ export default function TimelinePanel() {
               <Flex align="center" gap={1.5} bg="#26252F" px={2.5} h="28px" rounded="md" border="1px solid" borderColor="#818CF880">
                 <Zap size={12} color="#FBBF24" />
                 <Text fontSize="9px" textTransform="uppercase" fontWeight="bold" color="#FBBF24">
-                  Curva:
+                  {selectedKfs.length > 1 ? `${selectedKfs.length} keyframes · Curva:` : 'Curva:'}
                 </Text>
                 <select
                   value={currentEasing}
                   onChange={(e) => {
-                    useStore.getState().updateKeyframeEasing(
-                      selectedKeyframe.shapeId,
-                      selectedKeyframe.property,
-                      selectedKeyframe.keyframeId,
-                      e.target.value
-                    );
+                    const targets = selectedKfs.length > 0 ? selectedKfs : [selectedKeyframe];
+                    targets.forEach(r => useStore.getState().updateKeyframeEasing(r.shapeId, r.property, r.keyframeId, e.target.value));
                   }}
                   style={{ background: '#17161C', color: '#E5E2E1', border: '1px solid #46455480', borderRadius: '6px', padding: '2px 6px', fontSize: '10px', outline: 'none' }}
                 >
@@ -598,7 +712,8 @@ export default function TimelinePanel() {
                   variant="ghost"
                   size="xs"
                   onClick={() => {
-                    deleteKeyframe(selectedKeyframe.shapeId, selectedKeyframe.property, selectedKeyframe.keyframeId);
+                    deleteKeyframes(selectedKfs.length > 0 ? selectedKfs : [selectedKeyframe]);
+                    setSelectedKfs([]);
                     setSelectedKeyframe(null);
                   }}
                   minW="22px"
@@ -704,11 +819,11 @@ export default function TimelinePanel() {
                   </Flex>
 
                   {/* Sub-Property Tracks */}
-                  {isExpanded && (
+                  {isExpanded && hasKfs && (
                     <Box bg="#121214" pl={6} borderTop="1px solid" borderColor="#3F3F464D">
                       {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
-                        if (prop === 'radius' && shape.type !== 'rectangle') return null;
-                        if (['stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'].includes(prop) && !animations[shape.id]?.[prop]?.length) return null;
+                        // Only list properties that actually have keyframes
+                        if (!animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];
                         const hasPropKfs = propKfs.length > 0;
 
@@ -832,6 +947,28 @@ export default function TimelinePanel() {
             </Box>
           </Box>
 
+          {/* Marquee selection box */}
+          {marquee?.active && trackCanvasRef.current && (() => {
+            const rect = trackCanvasRef.current!.getBoundingClientRect();
+            const sl = trackCanvasRef.current!.scrollLeft, st = trackCanvasRef.current!.scrollTop;
+            return (
+              <Box
+                pos="absolute"
+                zIndex={40}
+                pointerEvents="none"
+                bg="#818CF826"
+                border="1px solid #818CF8"
+                rounded="sm"
+                style={{
+                  left: Math.min(marquee.x0, marquee.x1) - rect.left + sl,
+                  top: Math.min(marquee.y0, marquee.y1) - rect.top + st,
+                  width: Math.abs(marquee.x1 - marquee.x0),
+                  height: Math.abs(marquee.y1 - marquee.y0),
+                }}
+              />
+            );
+          })()}
+
           {/* Track Rows & Keyframes */}
           <Box pt={0}>
             {shapes.map((shape) => {
@@ -898,18 +1035,15 @@ export default function TimelinePanel() {
                       {Object.entries(shapeAnims).map(([prop, kfs]) => {
                         return kfs?.map((kf) => {
                           const pct = (kf.time / duration) * 100;
-                          const isSelected = selectedKeyframe?.keyframeId === kf.id;
+                          const isSelected = isKfSelected(shape.id, prop, kf.id);
                           const easeLabel = normalizeEasingName(kf.easing);
 
                           return (
                             <Box
                               key={kf.id}
                               className="keyframe-diamond"
-                              onPointerDown={(e) => {
-                                e.stopPropagation();
-                                setSelectedKeyframe({ shapeId: shape.id, property: prop as AnimatableProperty, keyframeId: kf.id });
-                                setDraggingKeyframe({ shapeId: shape.id, property: prop as AnimatableProperty, keyframeId: kf.id });
-                              }}
+                              data-kf={`${shape.id}|${prop}|${kf.id}`}
+                              onPointerDown={(e) => handleKeyframePointerDown(e, { shapeId: shape.id, property: prop as AnimatableProperty, keyframeId: kf.id })}
                               pos="absolute"
                               top="50%"
                               transform="translate(-50%, -50%) rotate(45deg)"
@@ -933,11 +1067,11 @@ export default function TimelinePanel() {
                   </Box>
 
                   {/* Sub-Property Sub-Tracks & Keyframes */}
-                  {isExpanded && (
+                  {isExpanded && hasAnimation && (
                     <Box bg="#100F14">
                       {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
-                        if (prop === 'radius' && shape.type !== 'rectangle') return null;
-                        if (['stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'].includes(prop) && !animations[shape.id]?.[prop]?.length) return null;
+                        // Only list properties that actually have keyframes
+                        if (!animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];
                         const sortedKfs = [...propKfs].sort((a, b) => a.time - b.time);
 
@@ -968,17 +1102,14 @@ export default function TimelinePanel() {
                               {/* Keyframe Diamonds */}
                               {sortedKfs.map((kf) => {
                                 const pct = (kf.time / duration) * 100;
-                                const isSelected = selectedKeyframe?.keyframeId === kf.id;
+                                const isSelected = isKfSelected(shape.id, prop, kf.id);
 
                                 return (
                                   <Box
                                     key={kf.id}
                                     className="keyframe-diamond"
-                                    onPointerDown={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedKeyframe({ shapeId: shape.id, property: prop, keyframeId: kf.id });
-                                      setDraggingKeyframe({ shapeId: shape.id, property: prop, keyframeId: kf.id });
-                                    }}
+                                    data-kf={`${shape.id}|${prop}|${kf.id}`}
+                                    onPointerDown={(e) => handleKeyframePointerDown(e, { shapeId: shape.id, property: prop, keyframeId: kf.id })}
                                     onDoubleClick={(e) => {
                                       e.stopPropagation();
                                       const rect = e.currentTarget.getBoundingClientRect();

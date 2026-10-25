@@ -573,7 +573,7 @@ export default function CanvasRenderer() {
         setSpacePressed(true);
         if (!isPanning) document.body.style.cursor = 'grab';
       }
-      if (e.code === 'Delete' || e.code === 'Backspace') {
+      if ((e.code === 'Delete' || e.code === 'Backspace') && !useStore.getState().keyframeSelectionActive) {
         removeSelected();
       }
 
