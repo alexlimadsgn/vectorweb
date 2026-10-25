@@ -161,7 +161,7 @@ export function generateGsapCode(
 }
 
 // Apply easing curve — supports GSAP, cubic-bezier, and spring
-function applyEasing(t: number, kf?: Keyframe): number {
+export function applyEasing(t: number, kf?: Keyframe): number {
   if (t <= 0) return 0;
   if (t >= 1) return 1;
 

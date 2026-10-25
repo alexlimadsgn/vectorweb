@@ -165,7 +165,8 @@ type Tab = "presets" | "bezier" | "spring";
 
 export default function EasingEditor({ keyframe, anchorRect, onClose, onApply }: EasingEditorProps) {
   const [activeTab, setActiveTab] = useState<Tab>(() =>
-    keyframe.easing === "spring" ? "spring" : keyframe.easing === "cubic-bezier" ? "bezier" : "presets"
+    // Presets live in the easing grid; this panel is for fine-tuning
+    keyframe.easing === "spring" ? "spring" : "bezier"
   );
   const [bezier, setBezier] = useState<[number,number,number,number]>(keyframe.bezier || DEFAULT_BEZIER);
   const [spring, setSpring] = useState<SpringConfig>(keyframe.spring || DEFAULT_SPRING);

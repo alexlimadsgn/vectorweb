@@ -9,6 +9,7 @@ import { AnimatableProperty, BaseShape, Keyframe, SpringConfig } from '../types'
 import { exportAnimatedSvg } from '../lib/exportAnimatedSvg';
 import { normalizeEasingName } from '../lib/animationUtils';
 import EasingEditor from './EasingEditor';
+import EasingBar from './EasingBar';
 
 const PROPERTY_LABELS: Record<AnimatableProperty, string> = {
   x: 'Posição X',
@@ -687,50 +688,46 @@ export default function TimelinePanel() {
         {/* Right Header Actions */}
         <Flex align="center" gap={2.5}>
 
-          {/* Selected Keyframe Inspector / Easing Picker */}
+          {/* Selected keyframe(s): segment duration, curve presets, custom curve */}
           {selectedKeyframe && (() => {
-            const shapeAnim = animations[selectedKeyframe.shapeId]?.[selectedKeyframe.property];
-            const currentKf = shapeAnim?.find(k => k.id === selectedKeyframe.keyframeId);
-            const currentEasing = currentKf?.easing || 'power1.out';
+            const track = [...(animations[selectedKeyframe.shapeId]?.[selectedKeyframe.property] || [])].sort((a, b) => a.time - b.time);
+            const idx = track.findIndex(k => k.id === selectedKeyframe.keyframeId);
+            const currentKf = track[idx];
+            if (!currentKf) return null;
+            const targets = selectedKfs.length > 0 ? selectedKfs : [selectedKeyframe];
+            const prevOf = (r: KfRef) => {
+              const t = [...(useStore.getState().animations[r.shapeId]?.[r.property] || [])].sort((a, b) => a.time - b.time);
+              const i = t.findIndex(k => k.id === r.keyframeId);
+              return i > 0 ? t[i - 1] : null;
+            };
 
             return (
-              <Flex align="center" gap={1.5} bg="#26252F" px={2.5} h="28px" rounded="md" border="1px solid" borderColor="#818CF880">
-                <Zap size={12} color="#FBBF24" />
-                <Text fontSize="9px" textTransform="uppercase" fontWeight="bold" color="#FBBF24">
-                  {selectedKfs.length > 1 ? `${selectedKfs.length} keyframes · Curva:` : 'Curva:'}
-                </Text>
-                <select
-                  value={currentEasing}
-                  onChange={(e) => {
-                    const targets = selectedKfs.length > 0 ? selectedKfs : [selectedKeyframe];
-                    targets.forEach(r => useStore.getState().updateKeyframeEasing(r.shapeId, r.property, r.keyframeId, e.target.value));
-                  }}
-                  style={{ background: '#17161C', color: '#E5E2E1', border: '1px solid #46455480', borderRadius: '6px', padding: '2px 6px', fontSize: '10px', outline: 'none' }}
-                >
-                  {EASING_OPTIONS.map(e => (
-                    <option key={e.value} value={e.value}>{e.label}</option>
-                  ))}
-                </select>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
-                    deleteKeyframes(selectedKfs.length > 0 ? selectedKfs : [selectedKeyframe]);
-                    setSelectedKfs([]);
-                    setSelectedKeyframe(null);
-                  }}
-                  minW="22px"
-                  h="22px"
-                  p={0}
-                  color="#F87171"
-                  _hover={{ bg: '#F8717133' }}
-                  rounded="md"
-                  transition="colors"
-                  title="Excluir Keyframe"
-                >
-                  <Trash2 size={12} />
-                </Button>
-              </Flex>
+              <EasingBar
+                keyframe={currentKf}
+                segmentDuration={idx > 0 ? currentKf.time - track[idx - 1].time : null}
+                count={targets.length}
+                onDurationChange={(d) => {
+                  // Each selected keyframe moves so its own segment lasts `d` seconds
+                  setKeyframeTimes(targets.flatMap(r => {
+                    const prev = prevOf(r);
+                    return prev ? [{ ...r, time: prev.time + d }] : [];
+                  }));
+                }}
+                onEasingChange={(easing, bezier, spring) => {
+                  targets.forEach(r => updateKeyframeEasing(r.shapeId, r.property, r.keyframeId, easing, bezier, spring));
+                }}
+                onOpenCustom={(anchorRect) => setEasingEditorState({
+                  keyframe: currentKf,
+                  shapeId: selectedKeyframe.shapeId,
+                  property: selectedKeyframe.property,
+                  anchorRect,
+                })}
+                onDelete={() => {
+                  deleteKeyframes(targets);
+                  setSelectedKfs([]);
+                  setSelectedKeyframe(null);
+                }}
+              />
             );
           })()}
 
@@ -1157,14 +1154,10 @@ export default function TimelinePanel() {
         anchorRect={easingEditorState.anchorRect}
         onClose={() => setEasingEditorState(null)}
         onApply={(easing, bezier, spring) => {
-          updateKeyframeEasing(
-            easingEditorState.shapeId,
-            easingEditorState.property,
-            easingEditorState.keyframe.id,
-            easing,
-            bezier,
-            spring
-          );
+          // Apply to the whole selection when the edited keyframe is part of it
+          const edited = { shapeId: easingEditorState.shapeId, property: easingEditorState.property, keyframeId: easingEditorState.keyframe.id };
+          const targets = isKfSelected(edited.shapeId, edited.property, edited.keyframeId) ? selectedKfs : [edited];
+          targets.forEach(r => updateKeyframeEasing(r.shapeId, r.property, r.keyframeId, easing, bezier, spring));
         }}
       />
     )}

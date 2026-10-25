@@ -1,6 +1,6 @@
-import React from 'react';
-import { Box, Flex, Text } from '@chakra-ui/react';
-import { RectangleHorizontal, RectangleVertical } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Box, Flex, Text, Portal } from '@chakra-ui/react';
+import { RectangleHorizontal, RectangleVertical, ChevronDown, Check } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { BaseShape } from '../../types';
 import { Section, IconButton } from './fields';
@@ -51,13 +51,146 @@ export const FRAME_PRESETS: { group: string; items: { name: string; w: number; h
   },
 ];
 
+type FramePreset = { name: string; w: number; h: number };
+
+/** Tiny box with the preset's aspect ratio. */
+const AspectGlyph = ({ w, h, active }: { w: number; h: number; active?: boolean }) => {
+  const max = 14;
+  const bw = w >= h ? max : Math.max(5, (w / h) * max);
+  const bh = h >= w ? max : Math.max(5, (h / w) * max);
+  return (
+    <Flex w="16px" h="16px" align="center" justify="center" flexShrink={0}>
+      <Box w={`${bw}px`} h={`${bh}px`} border="1.5px solid" borderColor={active ? '#A5B4FC' : '#71717A'} rounded="2px" />
+    </Flex>
+  );
+};
+
+/** Custom dropdown with the frame size presets, grouped by category. */
+function FramePresetPicker({ current, width, height, onPick }: {
+  current?: FramePreset;
+  width: number;
+  height: number;
+  onPick: (p: FramePreset) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const toggle = () => {
+    setRect(btnRef.current?.getBoundingClientRect() || null);
+    setOpen(o => !o);
+  };
+
+  // Open upwards when there isn't room below
+  const spaceBelow = rect ? window.innerHeight - rect.bottom : 0;
+  const maxH = Math.min(380, Math.max(spaceBelow, rect ? rect.top : 0) - 16);
+  const placeBelow = rect ? spaceBelow >= 260 || spaceBelow >= rect.top : true;
+
+  return (
+    <>
+      <Flex
+        as="button"
+        type="button"
+        ref={btnRef}
+        onClick={toggle}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Tamanho predefinido"
+        w="full"
+        h="30px"
+        px={2}
+        gap={2}
+        align="center"
+        bg={open ? '#323238' : '#27272A'}
+        border="1px solid"
+        borderColor={open ? '#818CF8' : '#3F3F4680'}
+        rounded="md"
+        _hover={{ bg: '#323238' }}
+        transition="all 0.15s"
+      >
+        <AspectGlyph w={width} h={height} />
+        <Text flex={1} textAlign="left" fontSize="11px" color="#E5E2E1" truncate>
+          {current ? current.name : 'Personalizado'}
+        </Text>
+        <Text fontSize="10px" color="#8B8A97" fontFamily="mono">{width}×{height}</Text>
+        <ChevronDown size={13} color="#A1A1AA" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </Flex>
+
+      {open && rect && (
+        <Portal>
+          <Box pos="fixed" inset={0} zIndex={1000} onClick={() => setOpen(false)} />
+          <Box
+            role="listbox"
+            pos="fixed"
+            zIndex={1001}
+            bg="#18181B"
+            border="1px solid #3F3F46"
+            rounded="lg"
+            boxShadow="0 12px 32px rgba(0,0,0,0.6)"
+            py={1}
+            overflowY="auto"
+            style={{
+              left: rect.left,
+              width: rect.width,
+              maxHeight: maxH,
+              ...(placeBelow ? { top: rect.bottom + 4 } : { bottom: window.innerHeight - rect.top + 4 }),
+            }}
+          >
+            {FRAME_PRESETS.map(g => (
+              <Box key={g.group} pb={1}>
+                <Text px={3} pt={2} pb={1} fontSize="10px" fontWeight="semibold" color="#8B8A97" textTransform="uppercase" letterSpacing="wider">
+                  {g.group}
+                </Text>
+                {g.items.map(p => {
+                  const active = current?.name === p.name;
+                  return (
+                    <Flex
+                      key={p.name}
+                      as="button"
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      w="full"
+                      align="center"
+                      gap={2}
+                      px={3}
+                      py={1.5}
+                      bg={active ? '#818CF81F' : 'transparent'}
+                      _hover={{ bg: '#27272A' }}
+                      onClick={() => { onPick(p); setOpen(false); }}
+                    >
+                      <AspectGlyph w={p.w} h={p.h} active={active} />
+                      <Text flex={1} textAlign="left" fontSize="11px" color={active ? 'white' : '#D4D4D8'} truncate>{p.name}</Text>
+                      <Text fontSize="10px" color="#71717A" fontFamily="mono">{p.w}×{p.h}</Text>
+                      <Box w="12px" flexShrink={0}>{active && <Check size={12} color="#A5B4FC" />}</Box>
+                    </Flex>
+                  );
+                })}
+              </Box>
+            ))}
+          </Box>
+        </Portal>
+      )}
+    </>
+  );
+}
+
 export default function FrameSection({ shape }: { shape: BaseShape }) {
   const updateShape = useStore((s) => s.updateShape);
   const pushHistory = useStore((s) => s.pushHistory);
 
   const w = Math.round(Math.abs(shape.width));
   const h = Math.round(Math.abs(shape.height));
-  const current = FRAME_PRESETS.flatMap(g => g.items).find(p => (p.w === w && p.h === h) || (p.w === h && p.h === w));
+  const allPresets = FRAME_PRESETS.flatMap(g => g.items);
+  // Exact size first; a rotated match (e.g. a story turned landscape) only as fallback
+  const current = allPresets.find(p => p.w === w && p.h === h) || allPresets.find(p => p.w === h && p.h === w);
   const clip = shape.clipContent !== false;
 
   const setSize = (width: number, height: number) => {
@@ -67,37 +200,12 @@ export default function FrameSection({ shape }: { shape: BaseShape }) {
 
   return (
     <Section title="Frame">
-      <Box pos="relative">
-        <select
-          aria-label="Tamanho predefinido"
-          value={current ? `${current.w}x${current.h}` : ''}
-          onChange={(e) => {
-            const [pw, ph] = e.target.value.split('x').map(Number);
-            if (pw && ph) setSize(pw, ph);
-          }}
-          style={{
-            width: '100%',
-            height: 28,
-            background: '#27272A',
-            color: '#E5E2E1',
-            border: '1px solid #3F3F4680',
-            borderRadius: 6,
-            padding: '0 8px',
-            fontSize: 11,
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          <option value="">{current ? current.name : `Personalizado (${w}×${h})`}</option>
-          {FRAME_PRESETS.map(g => (
-            <optgroup key={g.group} label={g.group}>
-              {g.items.map(p => (
-                <option key={p.name} value={`${p.w}x${p.h}`}>{`${p.name} — ${p.w}×${p.h}`}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </Box>
+      <FramePresetPicker
+        current={current}
+        width={w}
+        height={h}
+        onPick={(p) => setSize(p.w, p.h)}
+      />
 
       <Flex align="center" justify="space-between">
         <Flex gap={1}>
