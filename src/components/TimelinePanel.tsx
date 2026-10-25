@@ -149,16 +149,20 @@ export default function TimelinePanel() {
     return Math.max(0, Math.min(duration, Math.round(time * 100) / 100));
   };
 
-  const handleKeyframePointerDown = (e: React.PointerEvent, ref: KfRef) => {
+  const handleKeyframePointerDown = (e: React.PointerEvent, refOrGroup: KfRef | KfRef[]) => {
     e.stopPropagation();
+    const group = Array.isArray(refOrGroup) ? refOrGroup : [refOrGroup];
+    const ref = group[0];
+    const groupKeys = new Set(group.map(kfKey));
+    const allSelected = group.every(r => isKfSelected(r.shapeId, r.property, r.keyframeId));
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     let next = selectedKfs;
     if (additive) {
-      next = isKfSelected(ref.shapeId, ref.property, ref.keyframeId)
-        ? selectedKfs.filter(r => kfKey(r) !== kfKey(ref))
-        : [...selectedKfs, ref];
-    } else if (!isKfSelected(ref.shapeId, ref.property, ref.keyframeId)) {
-      next = [ref];
+      next = allSelected
+        ? selectedKfs.filter(r => !groupKeys.has(kfKey(r)))
+        : [...selectedKfs.filter(r => !groupKeys.has(kfKey(r))), ...group];
+    } else if (!allSelected) {
+      next = group;
     }
     setSelectedKfs(next);
     setSelectedKeyframe(next.some(r => kfKey(r) === kfKey(ref)) ? ref : next[next.length - 1] || null);
@@ -235,9 +239,11 @@ export default function TimelinePanel() {
             const b = el.getBoundingClientRect();
             const cx = (b.left + b.right) / 2, cy = (b.top + b.bottom) / 2;
             if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
-              const [shapeId, property, keyframeId] = el.dataset.kf!.split('|');
-              const ref = { shapeId, property: property as AnimatableProperty, keyframeId };
-              hits.set(kfKey(ref), ref);
+              el.dataset.kf!.split(';').forEach(entry => {
+                const [shapeId, property, keyframeId] = entry.split('|');
+                const ref = { shapeId, property: property as AnimatableProperty, keyframeId };
+                hits.set(kfKey(ref), ref);
+              });
             }
           });
           const list = [...hits.values()];
@@ -1031,19 +1037,28 @@ export default function TimelinePanel() {
                         />
                       )}
 
-                      {/* Embedded Keyframe Diamonds */}
-                      {Object.entries(shapeAnims).map(([prop, kfs]) => {
-                        return kfs?.map((kf) => {
-                          const pct = (kf.time / duration) * 100;
-                          const isSelected = isKfSelected(shape.id, prop, kf.id);
-                          const easeLabel = normalizeEasingName(kf.easing);
+                      {/* One diamond per instant: it stands for every property keyframed at that time */}
+                      {(() => {
+                        const byTime = new Map<number, KfRef[]>();
+                        Object.entries(shapeAnims).forEach(([prop, kfs]) => kfs?.forEach(kf => {
+                          const key = Math.round(kf.time * 100) / 100;
+                          const list = byTime.get(key) || [];
+                          list.push({ shapeId: shape.id, property: prop as AnimatableProperty, keyframeId: kf.id });
+                          byTime.set(key, list);
+                        }));
+                        return [...byTime.entries()].map(([time, refs]) => {
+                          const pct = (time / duration) * 100;
+                          const selectedCount = refs.filter(r => isKfSelected(r.shapeId, r.property, r.keyframeId)).length;
+                          const isSelected = selectedCount === refs.length;
+                          const isPartial = selectedCount > 0 && !isSelected;
+                          const labels = refs.map(r => PROPERTY_LABELS[r.property]).join(', ');
 
                           return (
                             <Box
-                              key={kf.id}
+                              key={`${shape.id}-${time}`}
                               className="keyframe-diamond"
-                              data-kf={`${shape.id}|${prop}|${kf.id}`}
-                              onPointerDown={(e) => handleKeyframePointerDown(e, { shapeId: shape.id, property: prop as AnimatableProperty, keyframeId: kf.id })}
+                              data-kf={refs.map(r => `${r.shapeId}|${r.property}|${r.keyframeId}`).join(';')}
+                              onPointerDown={(e) => handleKeyframePointerDown(e, refs)}
                               pos="absolute"
                               top="50%"
                               transform="translate(-50%, -50%) rotate(45deg)"
@@ -1053,16 +1068,16 @@ export default function TimelinePanel() {
                               _active={{ cursor: 'grabbing' }}
                               zIndex={isSelected ? 25 : 15}
                               transition="width 0.15s, height 0.15s, background 0.15s, box-shadow 0.15s"
-                              bg={isSelected ? '#FBBF24' : '#FFFFFF'}
+                              bg={isSelected ? '#FBBF24' : isPartial ? '#FDE68A' : '#FFFFFF'}
                               border="1.5px solid"
                               borderColor={isSelected ? '#FFFFFF' : '#6366F1'}
                               boxShadow={isSelected ? '0 0 10px #FBBF24' : '0 1px 3px rgba(0,0,0,0.4)'}
                               style={{ left: `${pct}%` }}
-                              title={`${shape.name || shape.type} ${PROPERTY_LABELS[prop as AnimatableProperty]}: ${kf.value} @ ${kf.time}s (Ease: ${easeLabel})`}
+                              title={`${shape.name || shape.type} @ ${time}s — ${labels}`}
                             />
                           );
                         });
-                      })}
+                      })()}
                     </Box>
                   </Box>
 

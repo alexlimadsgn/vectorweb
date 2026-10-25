@@ -336,24 +336,27 @@ export const useStore = create<EditorState>((set, get) => {
     const shapeAnims = state.animations[shapeId];
     if (!shapeAnims || !shapeAnims[property]) return state;
 
-    const newKfs = shapeAnims[property]!.map(k => {
-      if (k.id !== keyframeId) return k;
-      const updated: typeof k = { ...k, easing };
+    const withEasing = (k: Keyframe): Keyframe => {
+      const updated: Keyframe = { ...k, easing };
       if (bezier) updated.bezier = bezier;
-      else delete (updated as any).bezier;
+      else delete updated.bezier;
       if (spring) updated.spring = spring;
-      else delete (updated as any).spring;
+      else delete updated.spring;
       return updated;
-    });
-    return {
-      animations: {
-        ...state.animations,
-        [shapeId]: {
-          ...shapeAnims,
-          [property]: newKfs
-        }
-      }
     };
+    const target = shapeAnims[property]!.find(k => k.id === keyframeId);
+    if (!target) return state;
+    const next = { ...shapeAnims, [property]: shapeAnims[property]!.map(k => (k.id === keyframeId ? withEasing(k) : k)) };
+
+    // Position moves as one: X and Y keyframes at the same instant share the speed curve,
+    // otherwise each axis would progress at a different rate and bend the trajectory
+    if (property === 'x' || property === 'y') {
+      const other: AnimatableProperty = property === 'x' ? 'y' : 'x';
+      if (next[other]) {
+        next[other] = next[other]!.map(k => (Math.abs(k.time - target.time) < 0.02 ? withEasing(k) : k));
+      }
+    }
+    return { animations: { ...state.animations, [shapeId]: next } };
   });
   },
 
