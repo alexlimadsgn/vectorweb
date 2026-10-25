@@ -892,29 +892,49 @@ export default function TopBar() {
 
         {/* Export Dropdown */}
         <Box pos="relative" style={{ position: 'relative' }}>
-          <Box
-            as="button"
-            id="export-dropdown-trigger"
-            onClick={() => setExportMenuOpen(!exportMenuOpen)}
-            bg="#818CF8"
-            _hover={{ bg: '#6366F1' }}
-            color="white"
-            px={4}
-            py={1.5}
-            rounded="md"
-            fontWeight="bold"
-            fontSize="xs"
-            _active={{ transform: 'scale(0.95)' }}
-            transition="all 0.15s"
-            display="flex"
-            align="center"
-            gap={2}
-            cursor="pointer"
-          >
-            <Download size={15} />
-            <Text>Exportar</Text>
-            <ChevronDown size={12} style={{ transform: exportMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-          </Box>
+          {/* Split button: main action exports MP4, the arrow opens every format */}
+          <Flex h="32px" rounded="md" overflow="hidden" bg="#818CF8" color="white" fontSize="xs" fontWeight="bold">
+            <Box
+              as="button"
+              type="button"
+              onClick={() => { setExportMenuOpen(false); setVideoDialogOpen(true); }}
+              title="Exportar vídeo MP4"
+              display="flex"
+              alignItems="center"
+              gap={2}
+              pl={3.5}
+              pr={3}
+              h="full"
+              lineHeight={1}
+              _hover={{ bg: '#6366F1' }}
+              _active={{ bg: '#4F46E5' }}
+              transition="background 0.15s"
+            >
+              <Download size={15} style={{ display: 'block', flexShrink: 0 }} />
+              <Text as="span" lineHeight={1}>Exportar</Text>
+            </Box>
+            <Box w="1px" bg="#FFFFFF40" my="7px" flexShrink={0} />
+            <Box
+              as="button"
+              type="button"
+              id="export-dropdown-trigger"
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              title="Mais formatos de exportação"
+              aria-label="Mais formatos de exportação"
+              aria-expanded={exportMenuOpen}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              w="30px"
+              h="full"
+              bg={exportMenuOpen ? '#6366F1' : 'transparent'}
+              _hover={{ bg: '#6366F1' }}
+              _active={{ bg: '#4F46E5' }}
+              transition="background 0.15s"
+            >
+              <ChevronDown size={14} style={{ display: 'block', transform: exportMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </Box>
+          </Flex>
           
           {exportMenuOpen && (
             <>
