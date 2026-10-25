@@ -4,6 +4,7 @@ import { getExportRegion } from './renderFrame';
 import { hasTrim } from './strokeUtils';
 import { getCornerRadii, roundedRectVertices } from './geometry';
 import { framesClip } from './frameClip';
+import { getArcContours, arcContoursToSvgPath } from './arcUtils';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -38,6 +39,8 @@ function geometryElement(shape: BaseShape, w0: number, h0: number, pathLength: s
     return `<path d="${d} Z"${pathLength} />`;
   }
   if (shape.type === 'ellipse') {
+    const contours = getArcContours(shape, w0, h0);
+    if (contours) return `<path d="${arcContoursToSvgPath(contours, r3)}" fill-rule="evenodd"${pathLength} />`;
     return `<ellipse cx="${r3(w0 / 2)}" cy="${r3(h0 / 2)}" rx="${r3(Math.abs(w0 / 2))}" ry="${r3(Math.abs(h0 / 2))}"${pathLength} />`;
   }
   if (shape.type === 'path' && shape.points && shape.points.length > 0) {

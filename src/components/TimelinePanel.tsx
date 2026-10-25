@@ -23,7 +23,10 @@ const PROPERTY_LABELS: Record<AnimatableProperty, string> = {
   strokeWidth: 'Espessura',
   trimStart: 'Trim Início',
   trimEnd: 'Trim Fim',
-  trimOffset: 'Trim Deslocamento'
+  trimOffset: 'Trim Deslocamento',
+  arcStart: 'Arco Início',
+  arcSweep: 'Arco Abertura',
+  arcRatio: 'Arco Ratio'
 };
 
 const TRACK_PADDING = 16;
@@ -821,7 +824,7 @@ export default function TimelinePanel() {
                   {/* Sub-Property Tracks */}
                   {isExpanded && hasKfs && (
                     <Box bg="#121214" pl={6} borderTop="1px solid" borderColor="#3F3F464D">
-                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
+                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset', 'arcStart', 'arcSweep', 'arcRatio'] as AnimatableProperty[]).map((prop) => {
                         // Only list properties that actually have keyframes
                         if (!animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];
@@ -1069,7 +1072,7 @@ export default function TimelinePanel() {
                   {/* Sub-Property Sub-Tracks & Keyframes */}
                   {isExpanded && hasAnimation && (
                     <Box bg="#100F14">
-                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'] as AnimatableProperty[]).map((prop) => {
+                      {(['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset', 'arcStart', 'arcSweep', 'arcRatio'] as AnimatableProperty[]).map((prop) => {
                         // Only list properties that actually have keyframes
                         if (!animations[shape.id]?.[prop]?.length) return null;
                         const propKfs = shapeAnims[prop] || [];

@@ -3,6 +3,7 @@ import { getAnimatedShape } from './animationUtils';
 import { applyStrokeStyle, applyShadow } from './strokeUtils';
 import { getCornerRadii, hasCornerRadius } from './geometry';
 import { clipToAncestorFrames } from './frameClip';
+import { getArcContours, traceArcContours } from './arcUtils';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -139,8 +140,10 @@ export function renderFrame(
       if (hasStroke) ctx.stroke();
     } else if (shape.type === 'ellipse') {
       ctx.beginPath();
-      ctx.ellipse(hw - axOff, hh - ayOff, Math.abs(hw), Math.abs(hh), 0, 0, Math.PI * 2);
-      if (hasFill) ctx.fill();
+      const contours = getArcContours(shape, shape.width, shape.height);
+      if (contours) traceArcContours(ctx, contours, -axOff, -ayOff);
+      else ctx.ellipse(hw - axOff, hh - ayOff, Math.abs(hw), Math.abs(hh), 0, 0, Math.PI * 2);
+      if (hasFill) ctx.fill('evenodd');
       if (hasStroke) ctx.stroke();
     } else if (shape.type === 'path' && shape.points && shape.points.length > 0) {
       tracePath(ctx, shape, hw - axOff, hh - ayOff);

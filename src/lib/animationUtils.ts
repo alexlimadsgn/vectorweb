@@ -306,7 +306,7 @@ export function getAnimatedShape(
 
   let hasAnyKeyframe = false;
   const animatedProps: Partial<BaseShape> = {};
-  const props: AnimatableProperty[] = ['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset'];
+  const props: AnimatableProperty[] = ['x', 'y', 'width', 'height', 'rotation', 'opacity', 'fill', 'radius', 'stroke', 'strokeWidth', 'trimStart', 'trimEnd', 'trimOffset', 'arcStart', 'arcSweep', 'arcRatio'];
 
   for (let i = 0; i < props.length; i++) {
     const p = props[i];

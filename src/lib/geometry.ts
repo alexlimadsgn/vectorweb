@@ -1,6 +1,6 @@
 import { BaseShape, Transform } from '../types';
 
-export type DragAction = 'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'rotate-nw' | 'rotate-ne' | 'rotate-sw' | 'rotate-se' | 'radius' | 'select-marquee' | 'none';
+export type DragAction = 'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se' | 'resize-n' | 'resize-e' | 'resize-s' | 'resize-w' | 'rotate-nw' | 'rotate-ne' | 'rotate-sw' | 'rotate-se' | 'radius' | 'arc-start' | 'arc-sweep' | 'arc-ratio' | 'select-marquee' | 'none';
 
 export const generateId = () => crypto.randomUUID();
 

@@ -3,6 +3,7 @@ import { getAnimatedShape } from './animationUtils';
 import { getExportRegion } from './renderFrame';
 import { hasTrim } from './strokeUtils';
 import { getCornerRadii, roundedRectVertices } from './geometry';
+import { getArcContours } from './arcUtils';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 type Value = number | number[];
@@ -65,7 +66,7 @@ const groupTransform = () => ({
 });
 
 /** Geometry at the shape's base size, in the box 0..w0 × 0..h0 (layer anchor maps it). */
-function geometry(shape: BaseShape, w0: number, h0: number, radius: object): object | null {
+function geometry(shape: BaseShape, w0: number, h0: number, radius: object): object | object[] | null {
   if ((shape.type === 'rectangle' || shape.type === 'frame' || shape.type === 'image') && shape.radii) {
     // Different radius per corner: Lottie's rect has a single radius, so emit a bezier path
     const v = roundedRectVertices(w0, h0, getCornerRadii({ ...shape, width: w0, height: h0 }));
@@ -78,6 +79,14 @@ function geometry(shape: BaseShape, w0: number, h0: number, radius: object): obj
     return { ty: 'rc', d: 1, nm: 'Retângulo', p: staticProp([r3(w0 / 2), r3(h0 / 2)]), s: staticProp([r3(Math.abs(w0)), r3(Math.abs(h0))]), r: radius };
   }
   if (shape.type === 'ellipse') {
+    // Arc / pie / ring: one bezier path per contour (rings are filled even-odd)
+    const contours = getArcContours(shape, w0, h0);
+    if (contours) {
+      return contours.map((v, n) => ({
+        ty: 'sh', d: 1, nm: `Arco ${n + 1}`,
+        ks: staticProp({ c: true, v: v.map(p => [r3(p.x), r3(p.y)]), i: v.map(p => p.i.map(r3)), o: v.map(p => p.o.map(r3)) } as any),
+      }));
+    }
     return { ty: 'el', d: 1, nm: 'Elipse', p: staticProp([r3(w0 / 2), r3(h0 / 2)]), s: staticProp([r3(Math.abs(w0)), r3(Math.abs(h0))]) };
   }
   if (shape.type === 'path' && shape.points && shape.points.length > 0) {
@@ -123,6 +132,7 @@ export function buildLottie(shapes: BaseShape[], animations: Animations, duratio
     const radius = prop(frames.map(s => r3(Math.min(s.radius || 0, Math.abs(w0) / 2, Math.abs(h0) / 2))));
     const geo = geometry(shape, w0, h0, radius);
     if (!geo) return null;
+    const geoItems = Array.isArray(geo) ? geo : [geo];
 
     const fills = frames.map(s => s.fill);
     const hasFill = fills.some(f => f && f !== 'transparent');
@@ -135,7 +145,7 @@ export function buildLottie(shapes: BaseShape[], animations: Animations, duratio
     const groups: object[] = [];
 
     if (hasStroke) {
-      const items: object[] = [geo];
+      const items: object[] = [...geoItems];
       if (trimmed) {
         items.push({
           ty: 'tm',
@@ -174,13 +184,13 @@ export function buildLottie(shapes: BaseShape[], animations: Animations, duratio
         ty: 'gr',
         nm: 'Preenchimento',
         it: [
-          geo,
+          ...geoItems,
           {
             ty: 'fl',
             nm: 'Preenchimento',
             c: prop(fills.map(f => hexToRgba(f && f !== 'transparent' ? f : '#000000'))),
             o: prop(fills.map(f => (f && f !== 'transparent' ? 100 : 0))),
-            r: 1,
+            r: geoItems.length > 1 ? 2 : 1, // even-odd for rings
           },
           groupTransform(),
         ],

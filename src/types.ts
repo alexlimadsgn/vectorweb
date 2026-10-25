@@ -3,7 +3,8 @@ export type ToolType = 'select' | 'frame' | 'rectangle' | 'ellipse' | 'pen' | 'b
 export type ShapeType = 'frame' | 'rectangle' | 'ellipse' | 'path' | 'group' | 'image';
 
 export type AnimatableProperty = 'x' | 'y' | 'width' | 'height' | 'rotation' | 'opacity' | 'fill' | 'radius'
-  | 'stroke' | 'strokeWidth' | 'trimStart' | 'trimEnd' | 'trimOffset';
+  | 'stroke' | 'strokeWidth' | 'trimStart' | 'trimEnd' | 'trimOffset'
+  | 'arcStart' | 'arcSweep' | 'arcRatio';
 
 export interface PathPoint {
   x: number;
@@ -59,6 +60,10 @@ export interface BaseShape {
   radii?: [number, number, number, number];
   // Frames: cut children at the frame bounds (default true)
   clipContent?: boolean;
+  // Ellipse arc: start angle (deg), sweep (% of a turn, ±100) and inner radius ratio (%)
+  arcStart?: number;
+  arcSweep?: number;
+  arcRatio?: number;
   // Stroke style
   strokeCap?: 'butt' | 'round' | 'square';
   strokeJoin?: 'miter' | 'round' | 'bevel';

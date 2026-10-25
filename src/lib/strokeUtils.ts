@@ -1,5 +1,6 @@
 import { BaseShape, PathPoint } from '../types';
 import { getCornerRadii } from './geometry';
+import { getArcContours, arcContoursLength } from './arcUtils';
 
 const cubicLength = (
   x0: number, y0: number, x1: number, y1: number,
@@ -31,6 +32,8 @@ export function getStrokeLength(shape: BaseShape): number {
     return 2 * (w + h) - corners;
   }
   if (shape.type === 'ellipse') {
+    const contours = getArcContours(shape, shape.width, shape.height);
+    if (contours) return arcContoursLength(contours);
     const a = w / 2;
     const b = h / 2;
     // Ramanujan's approximation

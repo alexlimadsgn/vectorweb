@@ -8,6 +8,7 @@ import { calculateMoveSnap, AlignmentGuide } from '../lib/snapUtils';
 import { simplifyPoints, smoothToBezier } from '../lib/pathUtils';
 import { applyStrokeStyle, applyShadow } from '../lib/strokeUtils';
 import { clipToAncestorFrames } from '../lib/frameClip';
+import { getArcContours, traceArcContours, arcParams } from '../lib/arcUtils';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import {
   Scissors, Copy, CopyPlus, Trash2,
@@ -53,6 +54,31 @@ const radiusHandlePositions = (shape: BaseShape, scale: number): [number, number
     [shape.width - off(3), shape.height - off(3)],
   ];
 };
+
+type ArcHandle = 'start' | 'sweep' | 'ratio';
+
+/** Arc handles (box space 0..w × 0..h): start and end of the sweep, and the inner radius. */
+const arcHandlePositions = (shape: BaseShape): Partial<Record<ArcHandle, [number, number]>> => {
+  const { start, sweep, ratio } = arcParams(shape);
+  const cx = shape.width / 2, cy = shape.height / 2;
+  const rx = Math.abs(shape.width / 2), ry = Math.abs(shape.height / 2);
+  const r = ratio / 100;
+  const along = Math.max(0.5, (1 + r) / 2); // middle of the ring (or half radius for a pie)
+  const at = (deg: number, f: number): [number, number] =>
+    [cx + rx * f * Math.cos(deg * Math.PI / 180), cy + ry * f * Math.sin(deg * Math.PI / 180)];
+  const handles: Partial<Record<ArcHandle, [number, number]>> = {
+    sweep: at(start + sweep * 3.6, along),
+    ratio: r > 0 ? at(start + sweep * 1.8, r) : [cx, cy],
+  };
+  if (Math.abs(sweep) < 100) handles.start = at(start, along);
+  return handles;
+};
+
+/** Arc handles show for a single selected ellipse that is big enough on screen. */
+const canEditArc = (shape: BaseShape, scale: number) =>
+  shape.type === 'ellipse' && Math.min(Math.abs(shape.width), Math.abs(shape.height)) * scale >= RADIUS_HANDLES_MIN_SIZE_PX;
+
+const ARC_BADGE_LABEL: Record<ArcHandle, string> = { start: 'Início', sweep: 'Abertura', ratio: 'Ratio' };
 
 /** Radius handles show while some corner can still grow and the shape is big enough on screen. */
 const canEditRadius = (shape: BaseShape, scale: number) => {
@@ -141,6 +167,26 @@ export default function CanvasRenderer() {
   const penDragIndexRef = useRef<number | null>(null);
   // Corner (0=NW,1=NE,2=SW,3=SE) whose radius handle is being dragged; fixed for the whole drag
   const radiusCornerRef = useRef(0);
+  // Arc start drag: angle between the pointer and the start angle when grabbed (avoids a jump)
+  const arcGrabOffsetRef = useRef(0);
+
+  /** Pointer in the ellipse's normalized space: angle (deg, clockwise) and distance (1 = edge). */
+  const toArcLocal = (s: BaseShape, p: { x: number; y: number }) => {
+    const rad = (s.rotation || 0) * Math.PI / 180;
+    const axOff = (s.anchorX ?? 0.5) * s.width;
+    const ayOff = (s.anchorY ?? 0.5) * s.height;
+    const hw = s.width / 2, hh = s.height / 2;
+    const ax = s.x + hw + (axOff - hw) * Math.cos(rad) - (ayOff - hh) * Math.sin(rad);
+    const ay = s.y + hh + (axOff - hw) * Math.sin(rad) + (ayOff - hh) * Math.cos(rad);
+    const lx = (p.x - ax) * Math.cos(-rad) - (p.y - ay) * Math.sin(-rad) + axOff;
+    const ly = (p.x - ax) * Math.sin(-rad) + (p.y - ay) * Math.cos(-rad) + ayOff;
+    const nx = hw !== 0 ? (lx - hw) / Math.abs(hw) : 0;
+    const ny = hh !== 0 ? (ly - hh) / Math.abs(hh) : 0;
+    return { angle: Math.atan2(ny, nx) * 180 / Math.PI, dist: Math.hypot(nx, ny), toWorld: (bx: number, by: number) => ({
+      x: ax + (bx - axOff) * Math.cos(rad) - (by - ayOff) * Math.sin(rad),
+      y: ay + (bx - axOff) * Math.sin(rad) + (by - ayOff) * Math.cos(rad),
+    }) };
+  };
   // Pencil: raw freehand points in world coordinates
   const freehandPointsRef = useRef<{ x: number; y: number }[] | null>(null);
   // Motion path editing: dragging a keyframe node or a segment's curve handle
@@ -257,11 +303,15 @@ export default function CanvasRenderer() {
     });
 
     if (hitShape) {
-      const forceIndividual = e.ctrlKey || e.metaKey;
-      const targetId = forceIndividual ? hitShape.id : (hitShape.groupId || hitShape.id);
+      // Same rule as left click: objects inside frames win, groups win over their children
+      const parent = hitShape.groupId ? shapes.find(s => s.id === hitShape.groupId) : undefined;
+      const modifier = e.ctrlKey || e.metaKey;
+      const targetId = parent?.type === 'frame'
+        ? (modifier ? parent.id : hitShape.id)
+        : (modifier ? hitShape.id : (hitShape.groupId || hitShape.id));
 
-      if (!selectedIds.includes(targetId) && !selectedIds.includes(hitShape.id)) {
-        selectShape(hitShape.id, e.shiftKey, forceIndividual);
+      if (!selectedIds.includes(targetId)) {
+        selectShape(targetId, e.shiftKey, true);
       }
 
       setContextMenu({
@@ -928,12 +978,15 @@ export default function CanvasRenderer() {
       } else if (shape.type === 'ellipse') {
         const rx = Math.abs(shape.width / 2);
         const ry = Math.abs(shape.height / 2);
-        const cacheKey = `ellipse_${shape.width}_${shape.height}_${ax_offset}_${ay_offset}`;
+        const arc = arcParams(shape);
+        const cacheKey = `ellipse_${shape.width}_${shape.height}_${ax_offset}_${ay_offset}_${arc.start}_${arc.sweep}_${arc.ratio}`;
         const path = getOrCreatePath2D(cacheKey, p => {
-          p.ellipse(shape.width / 2 - ax_offset, shape.height / 2 - ay_offset, rx, ry, 0, 0, 2 * Math.PI);
+          const contours = getArcContours(shape, shape.width, shape.height);
+          if (contours) traceArcContours(p, contours, -ax_offset, -ay_offset);
+          else p.ellipse(shape.width / 2 - ax_offset, shape.height / 2 - ay_offset, rx, ry, 0, 0, 2 * Math.PI);
         });
 
-        if (shape.fill !== 'transparent' || showWireframe) ctx.fill(path);
+        if (shape.fill !== 'transparent' || showWireframe) ctx.fill(path, 'evenodd');
         if ((shape.strokeWidth > 0 && shape.stroke !== 'transparent' && strokeVisible) || showWireframe) ctx.stroke(path);
       } else if (shape.type === 'path' && shape.points && shape.points.length > 0) {
         // Points are normalized around the shape center; offset to the anchor-based origin
@@ -1065,6 +1118,59 @@ export default function CanvasRenderer() {
           ctx.fill();
 
           ctx.restore();
+        }
+
+        // DRAW ELLIPSE ARC HANDLES (start / sweep / ratio)
+        if (shape.type === 'ellipse' && isSelectedForOverlay && selectedIds.length === 1 && activeTool === 'select' && canEditArc(shape, viewport.transform.scale)) {
+          const scale = viewport.transform.scale;
+          const handles = arcHandlePositions(shape);
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(rad);
+          (Object.entries(handles) as [ArcHandle, [number, number]][]).forEach(([kind, [hx, hy]]) => {
+            const x = hx - ax_offset, y = hy - ay_offset;
+            const active = dragAction === `arc-${kind}`;
+            ctx.beginPath();
+            ctx.arc(x, y, (active ? 6 : 5) / scale, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 1.5 / scale;
+            ctx.stroke();
+            if (kind === 'sweep') {
+              ctx.beginPath();
+              ctx.arc(x, y, 2 / scale, 0, 2 * Math.PI);
+              ctx.fillStyle = '#3b82f6';
+              ctx.fill();
+            }
+          });
+          ctx.restore();
+
+          // Value badge while dragging a handle
+          if (dragAction.startsWith('arc-')) {
+            const kind = dragAction.slice(4) as ArcHandle;
+            const hp = handles[kind] || handles.sweep!;
+            const px = hp[0] - ax_offset, py = hp[1] - ay_offset;
+            const wx = ax + px * Math.cos(rad) - py * Math.sin(rad);
+            const wy = ay + px * Math.sin(rad) + py * Math.cos(rad);
+            const { start, sweep, ratio } = arcParams(shape);
+            const value = kind === 'start' ? `${start.toFixed(1)}°` : kind === 'sweep' ? `${sweep.toFixed(1)}%` : `${ratio.toFixed(1)}%`;
+            const label = `${ARC_BADGE_LABEL[kind]} ${value}`;
+            const fontSize = 11 / scale;
+            ctx.save();
+            ctx.font = `600 ${fontSize}px sans-serif`;
+            const bw = ctx.measureText(label).width + 14 / scale;
+            const bh = fontSize + 7 / scale;
+            const bx = wx + 10 / scale, by = wy - bh / 2;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 4 / scale);
+            ctx.fillStyle = '#3b82f6';
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, bx + 7 / scale, by + bh / 2);
+            ctx.restore();
+          }
         }
 
         // DRAW INNER CORNER RADIUS HANDLES FOR RECTANGLES
@@ -1707,6 +1813,28 @@ export default function CanvasRenderer() {
         }
       }
 
+      if (selectedIds.length === 1) {
+        const rawSel = shapes.find(s => s.id === selectedIds[0]);
+        if (rawSel && rawSel.type === 'ellipse' && !rawSel.locked) {
+          const sel = getAnimatedShape(rawSel, currentTime, animations);
+          if (canEditArc(sel, viewport.transform.scale)) {
+            const local = toArcLocal(sel, pos);
+            const hit = (Object.entries(arcHandlePositions(sel)) as [ArcHandle, [number, number]][]).find(([, [hx, hy]]) => {
+              const w = local.toWorld(hx, hy);
+              return Math.hypot(pos.x - w.x, pos.y - w.y) * viewport.transform.scale <= 9;
+            });
+            if (hit) {
+              arcGrabOffsetRef.current = local.angle - arcParams(sel).start;
+              setDragAction(`arc-${hit[0]}` as DragAction);
+              setIsDragging(true);
+              dragDidMove.current = false;
+              dragStartRef.current = { x: pos.x, y: pos.y };
+              return;
+            }
+          }
+        }
+      }
+
       const radiusCandidateId = radiusHoverId || (selectedIds.length === 1 ? selectedIds[0] : null);
       if (radiusCandidateId) {
           const rawSelected = shapes.find(s => s.id === radiusCandidateId);
@@ -1866,15 +1994,22 @@ export default function CanvasRenderer() {
               return;
             }
 
-            const forceIndividual = e.ctrlKey || e.metaKey || e.shiftKey || e.detail >= 2;
-            const targetId = forceIndividual ? hitShape.id : (hitShape.groupId || hitShape.id);
-            const isAlreadySelected = forceIndividual
-                ? selectedIds.includes(hitShape.id)
-                : (selectedIds.includes(hitShape.id) || (hitShape.groupId && selectedIds.includes(hitShape.groupId)));
-            if (isAlreadySelected) {
-                pendingClickSelection.current = { id: hitShape.id, shiftKey: e.shiftKey, forceIndividual: true };
+            // Inside a frame the clicked object wins (Ctrl/Cmd picks the frame instead);
+            // inside a group the group wins (Ctrl/Cmd, Shift or double-click pick the object)
+            const parent = hitShape.groupId ? shapes.find(s => s.id === hitShape.groupId) : undefined;
+            const modifier = e.ctrlKey || e.metaKey;
+            let targetId: string;
+            if (parent?.type === 'frame') {
+                targetId = modifier ? parent.id : hitShape.id;
             } else {
-                selectShape(hitShape.id, e.shiftKey, forceIndividual);
+                const forceIndividual = modifier || e.shiftKey || e.detail >= 2;
+                targetId = forceIndividual ? hitShape.id : (hitShape.groupId || hitShape.id);
+            }
+            const isAlreadySelected = selectedIds.includes(targetId);
+            if (isAlreadySelected) {
+                pendingClickSelection.current = { id: targetId, shiftKey: e.shiftKey, forceIndividual: true };
+            } else {
+                selectShape(targetId, e.shiftKey, true);
             }
             setIsDragging(true);
             dragDidMove.current = false;
@@ -2144,7 +2279,29 @@ export default function CanvasRenderer() {
       }
       const pos = getCanvasPos(e.clientX, e.clientY);
       
-      if (dragAction === 'radius' && selectedIds.length === 1) {
+      if (dragAction.startsWith('arc-') && selectedIds.length === 1) {
+          const rawSel = shapes.find(s => s.id === selectedIds[0]);
+          if (rawSel && rawSel.type === 'ellipse') {
+              const sel = getAnimatedShape(rawSel, currentTime, animations);
+              const { angle, dist } = toArcLocal(sel, pos);
+              const cur = arcParams(sel);
+              const round1 = (v: number) => Math.round(v * 10) / 10;
+              if (dragAction === 'arc-ratio') {
+                  updateShape(sel.id, { arcRatio: round1(Math.max(0, Math.min(99, dist * 100))) });
+              } else if (dragAction === 'arc-start') {
+                  const start = ((angle - arcGrabOffsetRef.current) % 360 + 360) % 360;
+                  updateShape(sel.id, { arcStart: round1(start > 180 ? start - 360 : start) });
+              } else {
+                  // Sweep: take the angle turn closest to the previous sweep so it can go past 0/360
+                  const delta = ((angle - cur.start) % 360 + 360) % 360;
+                  const prev = cur.sweep * 3.6;
+                  const candidates = [delta, delta - 360];
+                  let next = candidates.reduce((a, b) => (Math.abs(b - prev) < Math.abs(a - prev) ? b : a));
+                  if (Math.abs(prev) > 300 && Math.abs(next) < 60) next = Math.sign(prev) * 360; // snap to full instead of wrapping
+                  updateShape(sel.id, { arcSweep: round1(Math.max(-100, Math.min(100, next / 3.6))) });
+              }
+          }
+      } else if (dragAction === 'radius' && selectedIds.length === 1) {
           const rawSelected = shapes.find(s => s.id === selectedIds[0]);
           if (rawSelected && rawSelected.type === 'rectangle') {
               const selected = getAnimatedShape(rawSelected, currentTime, animations);

@@ -168,6 +168,52 @@ export default function DesignPanel({
         </Flex>
       </Section>
 
+      {shape.type === 'ellipse' && (
+        <Section
+          title="Arco"
+          action={(shape.arcStart || (shape.arcSweep ?? 100) !== 100 || shape.arcRatio) ? (
+            <Box as="button" type="button" fontSize="10px" color="#A1A1AA" _hover={{ color: 'white' }}
+              onClick={() => { pushHistory(); selectedIds.forEach(id => updateShape(id, { arcStart: 0, arcSweep: 100, arcRatio: 0 })); }}>
+              Resetar
+            </Box>
+          ) : undefined}
+        >
+          <Flex gap={1.5}>
+            <NumField
+              label={svgIcon(<path d="M12 12 L20 12 A8 8 0 0 0 12 4" />)}
+              title="Início (ângulo)"
+              value={Math.round((shape.arcStart ?? 0) * 10) / 10}
+              suffix="°"
+              onChange={v => handleChange('arcStart', v)}
+              onCommit={commitChange}
+              keyframe={kf('arcStart')}
+            />
+            <NumField
+              label={svgIcon(<path d="M12 12 L20 12 A8 8 0 1 1 12 4 Z" />)}
+              title="Abertura (% de uma volta, negativo = anti-horário)"
+              value={Math.round((shape.arcSweep ?? 100) * 10) / 10}
+              min={-100}
+              max={100}
+              suffix="%"
+              onChange={v => handleChange('arcSweep', v)}
+              onCommit={commitChange}
+              keyframe={kf('arcSweep')}
+            />
+          </Flex>
+          <NumField
+            label={svgIcon(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.5" /></>)}
+            title="Ratio (raio do furo central)"
+            value={Math.round((shape.arcRatio ?? 0) * 10) / 10}
+            min={0}
+            max={99}
+            suffix="%"
+            onChange={v => handleChange('arcRatio', v)}
+            onCommit={commitChange}
+            keyframe={kf('arcRatio')}
+          />
+        </Section>
+      )}
+
       <Section title="Opacidade">
         <Flex align="center" gap={2}>
           <Slider.Root
