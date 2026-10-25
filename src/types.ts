@@ -55,6 +55,8 @@ export interface BaseShape {
   anchorY?: number;
   editAnchorManual?: boolean;
   radius?: number;
+  // Per-corner radii [top-left, top-right, bottom-right, bottom-left]; overrides `radius` when set
+  radii?: [number, number, number, number];
   // Stroke style
   strokeCap?: 'butt' | 'round' | 'square';
   strokeJoin?: 'miter' | 'round' | 'bevel';

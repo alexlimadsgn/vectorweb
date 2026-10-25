@@ -1,4 +1,5 @@
 import { BaseShape, PathPoint } from '../types';
+import { getCornerRadii } from './geometry';
 
 const cubicLength = (
   x0: number, y0: number, x1: number, y1: number,
@@ -25,8 +26,9 @@ export function getStrokeLength(shape: BaseShape): number {
   const w = Math.abs(shape.width);
   const h = Math.abs(shape.height);
   if (shape.type === 'rectangle' || shape.type === 'frame' || shape.type === 'image') {
-    const r = Math.min(shape.radius || 0, w / 2, h / 2);
-    return 2 * (w + h) - (8 - 2 * Math.PI) * r;
+    // Each rounded corner replaces 2r of straight edge with a quarter arc
+    const corners = getCornerRadii(shape).reduce((sum, r) => sum + (2 - Math.PI / 2) * r, 0);
+    return 2 * (w + h) - corners;
   }
   if (shape.type === 'ellipse') {
     const a = w / 2;

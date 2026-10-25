@@ -2,6 +2,7 @@ import { BaseShape, AnimatableProperty, Keyframe } from '../types';
 import { getAnimatedShape } from './animationUtils';
 import { getExportRegion } from './renderFrame';
 import { hasTrim } from './strokeUtils';
+import { getCornerRadii, roundedRectVertices } from './geometry';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 type Value = number | number[];
@@ -65,6 +66,14 @@ const groupTransform = () => ({
 
 /** Geometry at the shape's base size, in the box 0..w0 × 0..h0 (layer anchor maps it). */
 function geometry(shape: BaseShape, w0: number, h0: number, radius: object): object | null {
+  if ((shape.type === 'rectangle' || shape.type === 'frame' || shape.type === 'image') && shape.radii) {
+    // Different radius per corner: Lottie's rect has a single radius, so emit a bezier path
+    const v = roundedRectVertices(w0, h0, getCornerRadii({ ...shape, width: w0, height: h0 }));
+    return {
+      ty: 'sh', d: 1, nm: 'Retângulo',
+      ks: staticProp({ c: true, v: v.map(p => [r3(p.x), r3(p.y)]), i: v.map(p => p.i.map(r3)), o: v.map(p => p.o.map(r3)) } as any),
+    };
+  }
   if (shape.type === 'rectangle' || shape.type === 'frame' || shape.type === 'image') {
     return { ty: 'rc', d: 1, nm: 'Retângulo', p: staticProp([r3(w0 / 2), r3(h0 / 2)]), s: staticProp([r3(Math.abs(w0)), r3(Math.abs(h0))]), r: radius };
   }

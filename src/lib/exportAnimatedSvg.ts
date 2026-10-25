@@ -2,6 +2,7 @@ import { BaseShape, AnimatableProperty, Keyframe } from '../types';
 import { getAnimatedShape } from './animationUtils';
 import { getExportRegion } from './renderFrame';
 import { hasTrim } from './strokeUtils';
+import { getCornerRadii, roundedRectVertices } from './geometry';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -20,9 +21,20 @@ function geometryElement(shape: BaseShape, w0: number, h0: number, pathLength: s
     return `<image href="${escapeAttr(imgUrl)}" width="${r3(w0)}" height="${r3(h0)}" preserveAspectRatio="none" />`;
   }
   if (shape.type === 'rectangle' || shape.type === 'frame') {
-    const r = Math.min(shape.radius || 0, Math.abs(w0) / 2, Math.abs(h0) / 2);
-    const rAttr = r > 0 ? ` rx="${r3(r)}" ry="${r3(r)}"` : '';
-    return `<rect width="${r3(w0)}" height="${r3(h0)}"${rAttr}${pathLength} />`;
+    const radii = getCornerRadii({ ...shape, width: w0, height: h0 });
+    if (radii.every(r => r === radii[0])) {
+      const rAttr = radii[0] > 0 ? ` rx="${r3(radii[0])}" ry="${r3(radii[0])}"` : '';
+      return `<rect width="${r3(w0)}" height="${r3(h0)}"${rAttr}${pathLength} />`;
+    }
+    // Different radius per corner: draw as a path of Bézier arcs
+    const v = roundedRectVertices(w0, h0, radii);
+    let d = `M ${r3(v[0].x)} ${r3(v[0].y)}`;
+    for (let k = 0; k < v.length; k++) {
+      const a = v[k];
+      const b = v[(k + 1) % v.length];
+      d += ` C ${r3(a.x + a.o[0])} ${r3(a.y + a.o[1])}, ${r3(b.x + b.i[0])} ${r3(b.y + b.i[1])}, ${r3(b.x)} ${r3(b.y)}`;
+    }
+    return `<path d="${d} Z"${pathLength} />`;
   }
   if (shape.type === 'ellipse') {
     return `<ellipse cx="${r3(w0 / 2)}" cy="${r3(h0 / 2)}" rx="${r3(Math.abs(w0 / 2))}" ry="${r3(Math.abs(h0 / 2))}"${pathLength} />`;

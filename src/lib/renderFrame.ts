@@ -1,6 +1,7 @@
 import { BaseShape, AnimatableProperty, Keyframe } from '../types';
 import { getAnimatedShape } from './animationUtils';
 import { applyStrokeStyle, applyShadow } from './strokeUtils';
+import { getCornerRadii, hasCornerRadius } from './geometry';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -121,8 +122,8 @@ export function renderFrame(
 
     if (shape.type === 'rectangle' || shape.type === 'image') {
       ctx.beginPath();
-      const r = Math.max(0, Math.min(shape.radius || 0, Math.abs(shape.width) / 2, Math.abs(shape.height) / 2));
-      if (r > 0) ctx.roundRect(-axOff, -ayOff, shape.width, shape.height, r);
+      const radii = getCornerRadii(shape);
+      if (hasCornerRadius(radii)) ctx.roundRect(-axOff, -ayOff, shape.width, shape.height, radii);
       else ctx.rect(-axOff, -ayOff, shape.width, shape.height);
       const img = imgUrl ? images.get(imgUrl) : undefined;
       if (img) {

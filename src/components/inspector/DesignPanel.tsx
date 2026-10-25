@@ -112,7 +112,7 @@ export default function DesignPanel({
               value={Math.round(shape.radius || 0)}
               min={0}
               max={maxRadius}
-              onChange={v => handleChange('radius', v)}
+              onChange={v => selectedIds.forEach(id => updateShape(id, { radius: v, radii: undefined }))}
               onCommit={commitChange}
               keyframe={kf('radius')}
             />
@@ -120,6 +120,30 @@ export default function DesignPanel({
           <Box w="28px" flexShrink={0} />
         </Flex>
       </Section>
+
+      {canRound && shape.radii && (
+        <Section title="Cantos individuais">
+          <Flex gap={1.5}>
+            {(['↖', '↗', '↘', '↙'] as const).map((label, k) => (
+              <React.Fragment key={label}>
+              <NumField
+                label={label}
+                title={['Superior esquerdo', 'Superior direito', 'Inferior direito', 'Inferior esquerdo'][k]}
+                value={Math.round(shape.radii![k])}
+                min={0}
+                max={maxRadius}
+                onChange={v => {
+                  const radii = [...shape.radii!] as [number, number, number, number];
+                  radii[k] = v;
+                  selectedIds.forEach(id => updateShape(id, { radii, radius: Math.max(...radii) }));
+                }}
+                onCommit={commitChange}
+              />
+              </React.Fragment>
+            ))}
+          </Flex>
+        </Section>
+      )}
 
       <Section title="Tamanho">
         <Flex gap={2}>

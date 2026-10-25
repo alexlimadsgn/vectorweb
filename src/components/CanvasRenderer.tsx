@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box } from '@chakra-ui/react';
 import { useStore } from '../store/useStore';
-import { screenToCanvas, canvasToScreen, isPointInShape, getShapeBounds, getShapeWorldAABB, generateId, detectHandleHit, DragAction } from '../lib/geometry';
+import { screenToCanvas, canvasToScreen, isPointInShape, getShapeBounds, getShapeWorldAABB, generateId, detectHandleHit, DragAction, getCornerRadii, hasCornerRadius } from '../lib/geometry';
 import { BaseShape } from '../types';
 import { getAnimatedShape, getMotionPathNodes, MotionSegment } from '../lib/animationUtils';
 import { calculateMoveSnap, AlignmentGuide } from '../lib/snapUtils';
@@ -31,6 +31,27 @@ const getOrCreatePath2D = (key: string, buildFn: (p: Path2D) => void): Path2D =>
     path2DCache.set(key, cached);
   }
   return cached;
+};
+
+// Radius-handle order is NW, NE, SW, SE; radii are stored as [tl, tr, br, bl]
+const HANDLE_TO_RADII = [0, 1, 3, 2];
+
+/** Inner positions (box space 0..w × 0..h) of the four corner-radius handles. */
+const radiusHandlePositions = (shape: BaseShape): [number, number][] => {
+  const radii = getCornerRadii(shape);
+  const off = (k: number) => Math.max(12, radii[HANDLE_TO_RADII[k]]);
+  return [
+    [off(0), off(0)],
+    [shape.width - off(1), off(1)],
+    [off(2), shape.height - off(2)],
+    [shape.width - off(3), shape.height - off(3)],
+  ];
+};
+
+/** Radius handles are useful while some corner can still grow and the shape is big enough. */
+const canEditRadius = (shape: BaseShape) => {
+  const max = Math.min(Math.abs(shape.width), Math.abs(shape.height)) / 2;
+  return max * 2 >= 24 && getCornerRadii(shape).some(r => r < max - 0.5);
 };
 
 export default function CanvasRenderer() {
@@ -112,6 +133,8 @@ export default function CanvasRenderer() {
   const [drawHoverTick, setDrawHoverTick] = useState(0);
   // Pen (Bézier): index of the node whose handles are being dragged out
   const penDragIndexRef = useRef<number | null>(null);
+  // Corner (0=NW,1=NE,2=SW,3=SE) whose radius handle is being dragged; fixed for the whole drag
+  const radiusCornerRef = useRef(0);
   // Pencil: raw freehand points in world coordinates
   const freehandPointsRef = useRef<{ x: number; y: number }[] | null>(null);
   // Motion path editing: dragging a keyframe node or a segment's curve handle
@@ -797,10 +820,11 @@ export default function CanvasRenderer() {
       if (!showWireframe && shape.type !== 'frame') applyShadow(ctx, shape, viewport.transform.scale * dpr);
 
       if (shape.type === 'frame') {
-        const r = Math.max(0, shape.radius || 0);
+        const cornerRadii = getCornerRadii(shape);
+        const r = hasCornerRadius(cornerRadii) ? cornerRadii : 0;
         const cacheKey = `frame_${shape.width}_${shape.height}_${r}_${ax_offset}_${ay_offset}`;
         const path = getOrCreatePath2D(cacheKey, p => {
-          if (r > 0 && typeof p.roundRect === 'function') {
+          if (r !== 0 && typeof p.roundRect === 'function') {
             p.roundRect(-ax_offset, -ay_offset, shape.width, shape.height, r);
           } else {
             p.rect(-ax_offset, -ay_offset, shape.width, shape.height);
@@ -851,10 +875,11 @@ export default function CanvasRenderer() {
         ctx.fillText(frameTitle, badgeX + padding, badgeY + badgeH / 2);
         ctx.restore();
       } else if (shape.type === 'rectangle') {
-        const r = Math.max(0, shape.radius || 0);
-        const cacheKey = `rect_${shape.width}_${shape.height}_${r}_${ax_offset}_${ay_offset}`;
+        const cornerRadii = getCornerRadii(shape);
+        const r = hasCornerRadius(cornerRadii) ? cornerRadii : 0;
+        const cacheKey = `rect_${shape.width}_${shape.height}_${String(r)}_${ax_offset}_${ay_offset}`;
         const path = getOrCreatePath2D(cacheKey, p => {
-          if (r > 0 && typeof p.roundRect === 'function') {
+          if (r !== 0 && typeof p.roundRect === 'function') {
             p.roundRect(-ax_offset, -ay_offset, shape.width, shape.height, r);
           } else {
             p.rect(-ax_offset, -ay_offset, shape.width, shape.height);
@@ -1027,26 +1052,15 @@ export default function CanvasRenderer() {
 
         // DRAW INNER CORNER RADIUS HANDLES FOR RECTANGLES
         if (shape.type === 'rectangle' && (shape.id === radiusHoverId || (dragAction === 'radius' && selectedIds[0] === shape.id))) {
-          const maxPossibleRadius = Math.min(Math.abs(shape.width), Math.abs(shape.height)) / 2;
-          const currentRadius = shape.radius || 0;
-          const isRadiusAtLimit = currentRadius >= maxPossibleRadius - 0.5;
-          const isShapeTooSmall = Math.min(Math.abs(shape.width), Math.abs(shape.height)) < 24;
-
-          // Hide radius handles when radius is at max limit or shape is too small
-          if (!isRadiusAtLimit && !isShapeTooSmall) {
+          // Hide radius handles when every corner is at its limit or the shape is too small (unless dragging)
+          if (dragAction === 'radius' || canEditRadius(shape)) {
             ctx.save();
             ctx.translate(ax, ay);
             ctx.rotate(rad);
 
-            const r = currentRadius;
-            const offset = Math.max(12, r);
-            
-            const innerPositions: [number, number][] = [
-              [offset - ax_offset, offset - ay_offset],
-              [shape.width - offset - ax_offset, offset - ay_offset],
-              [offset - ax_offset, shape.height - offset - ay_offset],
-              [shape.width - offset - ax_offset, shape.height - offset - ay_offset]
-            ];
+            const cornerRadii = getCornerRadii(shape);
+            const innerPositions: [number, number][] = radiusHandlePositions(shape)
+              .map(([hx, hy]) => [hx - ax_offset, hy - ay_offset] as [number, number]);
 
             // Find closest handle to mouse position to display the Radius tag
             let activeHandleIdx = 0;
@@ -1064,6 +1078,8 @@ export default function CanvasRenderer() {
                 }
               });
             }
+
+            if (dragAction === 'radius') activeHandleIdx = radiusCornerRef.current;
 
             innerPositions.forEach(([hx, hy]) => {
               ctx.beginPath();
@@ -1088,6 +1104,7 @@ export default function CanvasRenderer() {
               const activeWorldX = ax + activeHx * Math.cos(rad) - activeHy * Math.sin(rad);
               const activeWorldY = ay + activeHx * Math.sin(rad) + activeHy * Math.cos(rad);
 
+              const r = cornerRadii[HANDLE_TO_RADII[activeHandleIdx]];
               const label = `Radius ${Math.round(r)}`;
               const scale = viewport.transform.scale;
               const fontSize = 11 / scale;
@@ -1696,21 +1713,9 @@ export default function CanvasRenderer() {
               }
 
               if (selected.type === 'rectangle') {
-                  const maxPossibleRadius = Math.min(Math.abs(selected.width), Math.abs(selected.height)) / 2;
-                  const currentRadius = selected.radius || 0;
-                  const isRadiusAtLimit = currentRadius >= maxPossibleRadius - 0.5;
-                  const isShapeTooSmall = Math.min(Math.abs(selected.width), Math.abs(selected.height)) < 24;
-
-                  if (!isRadiusAtLimit && !isShapeTooSmall) {
-                      const r = currentRadius;
-                      const offset = Math.max(12, r);
-                      const innerOffsets = [
-                          [offset, offset],
-                          [selected.width - offset, offset],
-                          [offset, selected.height - offset],
-                          [selected.width - offset, selected.height - offset]
-                      ];
-                      for (const [lx, ly] of innerOffsets) {
+                  if (canEditRadius(selected)) {
+                      const innerOffsets = radiusHandlePositions(selected);
+                      for (const [cornerIdx, [lx, ly]] of innerOffsets.entries()) {
                           const rx_local = lx - ax_offset;
                           const ry_local = ly - ay_offset;
                           const hx_world = ax + rx_local * Math.cos(rad) - ry_local * Math.sin(rad);
@@ -1718,6 +1723,7 @@ export default function CanvasRenderer() {
                           const dist = Math.hypot(pos.x - hx_world, pos.y - hy_world) * viewport.transform.scale;
                           if (dist <= 10) {
                               if (!selectedIds.includes(selected.id)) selectShape(selected.id, false, true);
+                              radiusCornerRef.current = cornerIdx;
                               setDragAction('radius');
                               setIsDragging(true);
                               dragDidMove.current = false;
@@ -1957,9 +1963,7 @@ export default function CanvasRenderer() {
     let radiusTarget: string | null = null;
     if (activeTool === 'select' && !isDrawing && !isPanning && selectedIds.length <= 1) {
       const canShowRadius = (s: BaseShape) =>
-        s.type === 'rectangle' && !s.locked && !s.hidden &&
-        Math.min(Math.abs(s.width), Math.abs(s.height)) >= 24 &&
-        (s.radius || 0) < Math.min(Math.abs(s.width), Math.abs(s.height)) / 2 - 0.5;
+        s.type === 'rectangle' && !s.locked && !s.hidden && canEditRadius(s);
 
       const rawSelected = selectedIds.length === 1 ? shapes.find(s => s.id === selectedIds[0]) : undefined;
       const selected = rawSelected ? getAnimatedShape(rawSelected, currentTime, animations) : undefined;
@@ -2142,28 +2146,32 @@ export default function CanvasRenderer() {
               const lx = rx_local + ax_offset;
               const ly = ry_local + ay_offset;
               
-              const corners = [
-                  { cx: 0, cy: 0, dx: lx, dy: ly },
-                  { cx: selected.width, cy: 0, dx: selected.width - lx, dy: ly },
-                  { cx: 0, cy: selected.height, dx: lx, dy: selected.height - ly },
-                  { cx: selected.width, cy: selected.height, dx: selected.width - lx, dy: selected.height - ly }
-              ];
-              
-              let closest = corners[0];
-              let minDist = Math.hypot(lx - corners[0].cx, ly - corners[0].cy);
-              for (let i = 1; i < corners.length; i++) {
-                  const d = Math.hypot(lx - corners[i].cx, ly - corners[i].cy);
-                  if (d < minDist) {
-                      minDist = d;
-                      closest = corners[i];
+              // Distance from the corner picked at drag start (never re-pick: past the
+              // center another corner would be "closest" and the radius would shrink back)
+              const w = selected.width;
+              const h = selected.height;
+              const cornerDist = [
+                  Math.min(lx, ly),
+                  Math.min(w - lx, ly),
+                  Math.min(lx, h - ly),
+                  Math.min(w - lx, h - ly),
+              ][radiusCornerRef.current];
+              const maxRadius = Math.min(Math.abs(w), Math.abs(h)) / 2;
+              const targetRadius = Math.max(0, Math.min(maxRadius, cornerDist));
+
+              if (e.shiftKey || rawSelected.radii) {
+                  // Shift edits just this corner; a plain drag makes all corners equal again
+                  const radii = [...getCornerRadii(selected)] as [number, number, number, number];
+                  if (e.shiftKey) {
+                      radii[HANDLE_TO_RADII[radiusCornerRef.current]] = Math.round(targetRadius);
+                  } else {
+                      radii.fill(Math.round(targetRadius));
                   }
+                  const uniform = radii.every(v => v === radii[0]);
+                  updateShape(selected.id, uniform ? { radius: radii[0], radii: undefined } : { radii, radius: Math.max(...radii) });
+              } else {
+                  updateShape(selected.id, { radius: Math.round(targetRadius) });
               }
-              
-              let targetRadius = Math.max(0, Math.min(closest.dx, closest.dy));
-              const maxRadius = Math.min(selected.width / 2, selected.height / 2);
-              targetRadius = Math.min(maxRadius, targetRadius);
-              
-              updateShape(selected.id, { radius: Math.round(targetRadius) });
           }
       } else {
           if (dragAction === 'move') {

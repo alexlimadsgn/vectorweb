@@ -256,3 +256,33 @@ export const canvasToScreen = (
     y: canvasY * transform.scale + transform.y,
   };
 };
+
+export type CornerRadii = [number, number, number, number];
+
+/** Corner radii [tl, tr, br, bl], each clamped to half the shorter side so corners never overlap. */
+export const getCornerRadii = (shape: BaseShape): CornerRadii => {
+  const max = Math.min(Math.abs(shape.width), Math.abs(shape.height)) / 2;
+  const src = shape.radii || [shape.radius || 0, shape.radius || 0, shape.radius || 0, shape.radius || 0];
+  return src.map(r => Math.max(0, Math.min(max, r || 0))) as CornerRadii;
+};
+
+export const hasCornerRadius = (radii: CornerRadii) => radii.some(r => r > 0);
+
+/**
+ * Rounded rectangle in the box 0..w × 0..h as cubic Bézier vertices
+ * (clockwise from the top-left corner), with in/out tangents relative to each vertex.
+ */
+export const roundedRectVertices = (w: number, h: number, [tl, tr, br, bl]: CornerRadii) => {
+  const K = 0.5523; // circle-arc Bézier constant
+  const v: { x: number; y: number; i: [number, number]; o: [number, number] }[] = [];
+  const add = (x: number, y: number, i: [number, number], o: [number, number]) => v.push({ x, y, i, o });
+  add(tl, 0, [-tl * K, 0], [0, 0]);
+  add(w - tr, 0, [0, 0], [tr * K, 0]);
+  add(w, tr, [0, -tr * K], [0, 0]);
+  add(w, h - br, [0, 0], [0, br * K]);
+  add(w - br, h, [br * K, 0], [0, 0]);
+  add(bl, h, [0, 0], [-bl * K, 0]);
+  add(0, h - bl, [0, bl * K], [0, 0]);
+  add(0, tl, [0, 0], [0, -tl * K]);
+  return v;
+};
