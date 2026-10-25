@@ -5,6 +5,7 @@ import { useStore } from '../../store/useStore';
 import { BaseShape } from '../../types';
 import CustomColorPicker from '../CustomColorPicker';
 import { NumField, Section, IconButton, Segmented, AnchorPicker, KeyframeButton } from './fields';
+import FrameSection from './FrameSection';
 
 type AlignType = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 
@@ -82,6 +83,8 @@ export default function DesignPanel({
           </Flex>
         </Section>
       )}
+
+      {shape.type === 'frame' && selectedIds.length === 1 && <FrameSection shape={shape} />}
 
       <Section title="Posição">
         <Flex gap={2}>

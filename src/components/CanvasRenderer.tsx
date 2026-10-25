@@ -7,6 +7,7 @@ import { getAnimatedShape, getMotionPathNodes, MotionSegment } from '../lib/anim
 import { calculateMoveSnap, AlignmentGuide } from '../lib/snapUtils';
 import { simplifyPoints, smoothToBezier } from '../lib/pathUtils';
 import { applyStrokeStyle, applyShadow } from '../lib/strokeUtils';
+import { clipToAncestorFrames } from '../lib/frameClip';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import {
   Scissors, Copy, CopyPlus, Trash2,
@@ -794,6 +795,7 @@ export default function CanvasRenderer() {
       }
 
       ctx.save();
+      if (!showWireframe) clipToAncestorFrames(ctx, rawShape, shapes, currentTime, animations);
       const ax_offset = (shape.anchorX !== undefined ? shape.anchorX : 0.5) * shape.width;
       const ay_offset = (shape.anchorY !== undefined ? shape.anchorY : 0.5) * shape.height;
       const hw = shape.width / 2;

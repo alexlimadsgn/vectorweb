@@ -2,6 +2,7 @@ import { BaseShape, AnimatableProperty, Keyframe } from '../types';
 import { getAnimatedShape } from './animationUtils';
 import { applyStrokeStyle, applyShadow } from './strokeUtils';
 import { getCornerRadii, hasCornerRadius } from './geometry';
+import { clipToAncestorFrames } from './frameClip';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -94,7 +95,7 @@ export function renderFrame(
   ctx.translate(-region.x, -region.y);
 
   shapes.forEach(raw => {
-    if (raw.hidden || raw.type === 'group' || raw.type === 'frame') return;
+    if (raw.hidden || raw.type === 'group') return;
     const shape = getAnimatedShape(raw, time, animations);
     if (shape.opacity <= 0) return;
 
@@ -107,6 +108,7 @@ export function renderFrame(
     const ay = shape.y + hh + (axOff - hw) * Math.sin(rad) + (ayOff - hh) * Math.cos(rad);
 
     ctx.save();
+    clipToAncestorFrames(ctx, raw, shapes, time, animations);
     ctx.translate(ax, ay);
     ctx.rotate(rad);
     ctx.globalAlpha = Math.max(0, Math.min(1, shape.opacity));
@@ -120,7 +122,7 @@ export function renderFrame(
     const hasStroke = strokeVisible && shape.strokeWidth > 0 && shape.stroke && shape.stroke !== 'transparent';
     const imgUrl = shape.imageUrl || (shape.type === 'image' ? shape.src : undefined);
 
-    if (shape.type === 'rectangle' || shape.type === 'image') {
+    if (shape.type === 'rectangle' || shape.type === 'image' || shape.type === 'frame') {
       ctx.beginPath();
       const radii = getCornerRadii(shape);
       if (hasCornerRadius(radii)) ctx.roundRect(-axOff, -ayOff, shape.width, shape.height, radii);

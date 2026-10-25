@@ -3,6 +3,7 @@ import { getAnimatedShape } from './animationUtils';
 import { getExportRegion } from './renderFrame';
 import { hasTrim } from './strokeUtils';
 import { getCornerRadii, roundedRectVertices } from './geometry';
+import { framesClip } from './frameClip';
 
 type Animations = Record<string, Partial<Record<AnimatableProperty, Keyframe[]>>>;
 
@@ -125,6 +126,7 @@ export function exportAnimatedSvg(
 
   let css = '';
   let body = '';
+  const clipDefs = new Map<string, string>();
 
   shapesToExport.forEach((shape) => {
     const id = `vw-${shape.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -190,7 +192,31 @@ export function exportAnimatedSvg(
       }
     }
 
-    body += `  <g id="${id}" style="${escapeAttr(styleAttrs.join('; '))}">\n    ${geometry}\n  </g>\n`;
+    let element = `<g id="${id}" style="${escapeAttr(styleAttrs.join('; '))}">\n    ${geometry}\n  </g>`;
+    // Children of clipping frames are cut at the frame bounds (frame pose at t=0)
+    let parentId = shape.groupId;
+    const seen = new Set<string>();
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = shapes.find(s => s.id === parentId);
+      if (!parent) break;
+      if (framesClip(parent) && !parent.hidden) {
+        const clipId = `clip-${parent.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+        if (!clipDefs.has(clipId)) {
+          const p0 = getAnimatedShape(parent, 0, animations);
+          const pw = parent.width || 1;
+          const ph = parent.height || 1;
+          // SVG transform attribute: same transform without CSS units
+          const attr = transformFor(p0, pw, ph).replace(/px/g, '').replace(/deg/g, '');
+          // <clipPath> only accepts shapes (no <g>), so the transform goes on the shape itself
+          const clipShape = geometryElement({ ...parent, type: 'rectangle' }, pw, ph, '').replace(/^<(\w+) /, `<$1 transform="${attr}" `);
+          clipDefs.set(clipId, `<clipPath id="${clipId}">${clipShape}</clipPath>`);
+        }
+        element = `<g clip-path="url(#${clipId})">${element}</g>`;
+      }
+      parentId = parent.groupId;
+    }
+    body += `  ${element}\n`;
   });
 
   const w = r3(region.width);
@@ -198,6 +224,7 @@ export function exportAnimatedSvg(
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r3(region.x)} ${r3(region.y)} ${w} ${h}" width="${w}" height="${h}">\n`;
   svg += `  <!-- Created with VectorWeb -->\n`;
   if (css) svg += `  <style>\n${css}  </style>\n`;
+  if (clipDefs.size > 0) svg += `  <defs>\n    ${[...clipDefs.values()].join('\n    ')}\n  </defs>\n`;
   svg += body;
   svg += `</svg>\n`;
 

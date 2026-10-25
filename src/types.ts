@@ -57,6 +57,8 @@ export interface BaseShape {
   radius?: number;
   // Per-corner radii [top-left, top-right, bottom-right, bottom-left]; overrides `radius` when set
   radii?: [number, number, number, number];
+  // Frames: cut children at the frame bounds (default true)
+  clipContent?: boolean;
   // Stroke style
   strokeCap?: 'butt' | 'round' | 'square';
   strokeJoin?: 'miter' | 'round' | 'bevel';

@@ -1052,7 +1052,7 @@ export default function TimelinePanel() {
                               cursor="grab"
                               _active={{ cursor: 'grabbing' }}
                               zIndex={isSelected ? 25 : 15}
-                              transition="all 0.15s"
+                              transition="width 0.15s, height 0.15s, background 0.15s, box-shadow 0.15s"
                               bg={isSelected ? '#FBBF24' : '#FFFFFF'}
                               border="1.5px solid"
                               borderColor={isSelected ? '#FFFFFF' : '#6366F1'}
@@ -1123,7 +1123,7 @@ export default function TimelinePanel() {
                                     cursor="grab"
                                     _active={{ cursor: 'grabbing' }}
                                     zIndex={isSelected ? 25 : 15}
-                                    transition="all 0.15s"
+                                    transition="width 0.15s, height 0.15s, background 0.15s, box-shadow 0.15s"
                                     bg={isSelected ? '#FBBF24' : '#818CF8'}
                                     border="1px solid"
                                     borderColor={isSelected ? '#FFFFFF' : '#00000066'}
