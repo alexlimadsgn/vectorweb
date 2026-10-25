@@ -36,10 +36,15 @@ const getOrCreatePath2D = (key: string, buildFn: (p: Path2D) => void): Path2D =>
 // Radius-handle order is NW, NE, SW, SE; radii are stored as [tl, tr, br, bl]
 const HANDLE_TO_RADII = [0, 1, 3, 2];
 
+// Radius handles sit at least this many screen pixels inside each corner…
+const RADIUS_HANDLE_INSET_PX = 12;
+// …and only appear once the shape's shorter side is this big on screen
+const RADIUS_HANDLES_MIN_SIZE_PX = 64;
+
 /** Inner positions (box space 0..w × 0..h) of the four corner-radius handles. */
-const radiusHandlePositions = (shape: BaseShape): [number, number][] => {
+const radiusHandlePositions = (shape: BaseShape, scale: number): [number, number][] => {
   const radii = getCornerRadii(shape);
-  const off = (k: number) => Math.max(12, radii[HANDLE_TO_RADII[k]]);
+  const off = (k: number) => Math.max(RADIUS_HANDLE_INSET_PX / scale, radii[HANDLE_TO_RADII[k]]);
   return [
     [off(0), off(0)],
     [shape.width - off(1), off(1)],
@@ -48,10 +53,10 @@ const radiusHandlePositions = (shape: BaseShape): [number, number][] => {
   ];
 };
 
-/** Radius handles are useful while some corner can still grow and the shape is big enough. */
-const canEditRadius = (shape: BaseShape) => {
+/** Radius handles show while some corner can still grow and the shape is big enough on screen. */
+const canEditRadius = (shape: BaseShape, scale: number) => {
   const max = Math.min(Math.abs(shape.width), Math.abs(shape.height)) / 2;
-  return max * 2 >= 24 && getCornerRadii(shape).some(r => r < max - 0.5);
+  return max * 2 * scale >= RADIUS_HANDLES_MIN_SIZE_PX && getCornerRadii(shape).some(r => r < max - 0.5);
 };
 
 export default function CanvasRenderer() {
@@ -1063,13 +1068,13 @@ export default function CanvasRenderer() {
         // DRAW INNER CORNER RADIUS HANDLES FOR RECTANGLES
         if (shape.type === 'rectangle' && (shape.id === radiusHoverId || (dragAction === 'radius' && selectedIds[0] === shape.id))) {
           // Hide radius handles when every corner is at its limit or the shape is too small (unless dragging)
-          if (dragAction === 'radius' || canEditRadius(shape)) {
+          if (dragAction === 'radius' || canEditRadius(shape, viewport.transform.scale)) {
             ctx.save();
             ctx.translate(ax, ay);
             ctx.rotate(rad);
 
             const cornerRadii = getCornerRadii(shape);
-            const innerPositions: [number, number][] = radiusHandlePositions(shape)
+            const innerPositions: [number, number][] = radiusHandlePositions(shape, viewport.transform.scale)
               .map(([hx, hy]) => [hx - ax_offset, hy - ay_offset] as [number, number]);
 
             // Find closest handle to mouse position to display the Radius tag
@@ -1723,8 +1728,8 @@ export default function CanvasRenderer() {
               }
 
               if (selected.type === 'rectangle') {
-                  if (canEditRadius(selected)) {
-                      const innerOffsets = radiusHandlePositions(selected);
+                  if (canEditRadius(selected, viewport.transform.scale)) {
+                      const innerOffsets = radiusHandlePositions(selected, viewport.transform.scale);
                       for (const [cornerIdx, [lx, ly]] of innerOffsets.entries()) {
                           const rx_local = lx - ax_offset;
                           const ry_local = ly - ay_offset;
@@ -1973,7 +1978,7 @@ export default function CanvasRenderer() {
     let radiusTarget: string | null = null;
     if (activeTool === 'select' && !isDrawing && !isPanning && selectedIds.length <= 1) {
       const canShowRadius = (s: BaseShape) =>
-        s.type === 'rectangle' && !s.locked && !s.hidden && canEditRadius(s);
+        s.type === 'rectangle' && !s.locked && !s.hidden && canEditRadius(s, viewport.transform.scale);
 
       const rawSelected = selectedIds.length === 1 ? shapes.find(s => s.id === selectedIds[0]) : undefined;
       const selected = rawSelected ? getAnimatedShape(rawSelected, currentTime, animations) : undefined;
