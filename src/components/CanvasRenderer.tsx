@@ -852,8 +852,18 @@ export default function CanvasRenderer() {
         const padding = 6 / viewport.transform.scale;
         const badgeW = textMetrics.width + padding * 2;
         const badgeH = 20 / viewport.transform.scale;
-        const badgeX = -ax_offset;
-        const badgeY = -ay_offset - badgeH - (4 / viewport.transform.scale);
+        // Keep the title readable: undo the rotation in quarter turns so the badge sits on
+        // whichever edge currently faces up (it switches sides past ±45°)
+        const quarterTurns = Math.round((shape.rotation || 0) / 90);
+        ctx.rotate(-quarterTurns * Math.PI / 2);
+        const cos = Math.round(Math.cos(quarterTurns * Math.PI / 2));
+        const sin = Math.round(Math.sin(quarterTurns * Math.PI / 2));
+        const frameCorners = [
+          [-ax_offset, -ay_offset], [shape.width - ax_offset, -ay_offset],
+          [-ax_offset, shape.height - ay_offset], [shape.width - ax_offset, shape.height - ay_offset],
+        ].map(([px, py]) => [px * cos - py * sin, px * sin + py * cos]);
+        const badgeX = Math.min(...frameCorners.map(c => c[0]));
+        const badgeY = Math.min(...frameCorners.map(c => c[1])) - badgeH - (4 / viewport.transform.scale);
 
         ctx.fillStyle = isSelected ? '#6366F1' : '#27272A';
         ctx.strokeStyle = isSelected ? '#818CF8' : '#3F3F46';
