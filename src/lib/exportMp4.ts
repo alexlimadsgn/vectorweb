@@ -10,7 +10,18 @@ export interface Mp4ExportOptions {
   signal?: AbortSignal;
 }
 
-const BITS_PER_PIXEL = { low: 0.05, medium: 0.1, high: 0.2 };
+// Target bits per pixel per frame, with a floor so small canvases still get enough
+// bitrate for crisp edges and smooth motion (vector art has hard edges that H.264 smears when starved)
+const BITS_PER_PIXEL = { low: 0.08, medium: 0.15, high: 0.3 };
+const MIN_BITRATE = { low: 2_000_000, medium: 5_000_000, high: 12_000_000 };
+const MAX_BITRATE = 80_000_000;
+
+/** Yields to the event loop without timer throttling (setTimeout is clamped to 1s in background tabs). */
+const yieldToEventLoop = () => new Promise<void>(resolve => {
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => resolve();
+  channel.port2.postMessage(null);
+});
 
 // H.264 profiles from most to least capable; the first one the browser accepts wins
 const CODECS = ['avc1.640034', 'avc1.64002A', 'avc1.4D0034', 'avc1.42003E', 'avc1.42001F'];
@@ -31,11 +42,20 @@ export async function exportMp4(
   // H.264 requires even dimensions
   const width = Math.max(2, Math.round((region.width * options.scale) / 2) * 2);
   const height = Math.max(2, Math.round((region.height * options.scale) / 2) * 2);
-  const bitrate = Math.round(width * height * options.fps * BITS_PER_PIXEL[options.quality]);
+  const bitrate = Math.min(
+    MAX_BITRATE,
+    Math.max(MIN_BITRATE[options.quality], Math.round(width * height * options.fps * BITS_PER_PIXEL[options.quality]))
+  );
 
   let config: VideoEncoderConfig | null = null;
   for (const codec of CODECS) {
-    const candidate: VideoEncoderConfig = { codec, width, height, bitrate, framerate: options.fps, avc: { format: 'avc' } };
+    const candidate: VideoEncoderConfig = {
+      codec, width, height, bitrate,
+      framerate: options.fps,
+      bitrateMode: 'variable',
+      latencyMode: 'quality',
+      avc: { format: 'avc' },
+    };
     const support = await VideoEncoder.isConfigSupported(candidate).catch(() => null);
     if (support?.supported) {
       config = candidate;
@@ -60,7 +80,8 @@ export async function exportMp4(
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d', { alpha: false })!;
+  ctx.imageSmoothingQuality = 'high';
   const images = await preloadImages(shapes);
 
   const totalFrames = Math.max(1, Math.round(duration * options.fps));
@@ -77,13 +98,13 @@ export async function exportMp4(
       encoder.encode(frame, { keyFrame: i % (options.fps * 2) === 0 });
       frame.close();
 
-      // Backpressure: let the encoder drain and keep the UI responsive
+      // Backpressure: wait for the encoder to drain, and keep the UI responsive
       while (encoder.encodeQueueSize > 4) {
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise<void>(resolve => encoder.addEventListener('dequeue', () => resolve(), { once: true }));
       }
       if (i % 5 === 0) {
         options.onProgress?.(i / totalFrames);
-        await new Promise(r => setTimeout(r, 0));
+        await yieldToEventLoop();
       }
     }
 

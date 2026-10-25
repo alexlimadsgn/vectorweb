@@ -6,6 +6,7 @@ import { ToolType, BaseShape } from '../types';
 import { exportAnimatedSvg } from '../lib/exportAnimatedSvg';
 import ExportVideoDialog from './ExportVideoDialog';
 import AboutDialog from './AboutDialog';
+import { exportLottie } from '../lib/exportLottie';
 import { Info } from 'lucide-react';
 
 export default function TopBar() {
@@ -991,6 +992,25 @@ export default function TopBar() {
                    justify="space-between"
                  >
                    <Text color="inherit">Exportar vídeo (MP4)</Text>
+                 </Box>
+
+                 <Box
+                   as="button"
+                   onClick={() => {
+                     const state = useStore.getState();
+                     exportLottie(state.shapes, state.animations, state.duration);
+                     setExportMenuOpen(false);
+                   }}
+                   px={3.5}
+                   py={2}
+                   textAlign="left"
+                   color="#F4F4F5"
+                   fontWeight="bold"
+                   cursor="pointer"
+                   transition="all 0.15s"
+                   _hover={{ bg: '#27272A', color: '#818CF8' }}
+                 >
+                   <Text color="inherit">Lottie Json</Text>
                  </Box>
 
                  <Box

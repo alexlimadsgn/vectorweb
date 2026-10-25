@@ -7,9 +7,9 @@ import { getExportRegion } from '../lib/renderFrame';
 
 const FPS_OPTIONS = [24, 30, 60];
 const SCALE_OPTIONS = [
-  { value: 0.5, label: '0.5×' },
   { value: 1, label: '1×' },
   { value: 2, label: '2×' },
+  { value: 3, label: '3×' },
 ];
 const QUALITY_OPTIONS: { value: 'low' | 'medium' | 'high'; label: string }[] = [
   { value: 'low', label: 'Leve' },
@@ -52,8 +52,8 @@ export default function ExportVideoDialog({ onClose }: { onClose: () => void }) 
   const shapes = useStore(s => s.shapes);
   const duration = useStore(s => s.duration);
   const [fps, setFps] = useState(30);
-  const [scale, setScale] = useState(1);
-  const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
+  const [scale, setScale] = useState(2);
+  const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('high');
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
